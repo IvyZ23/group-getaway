@@ -1,4 +1,4 @@
-**concept** PlanItinerary [Trip]
+**concept** PlanItinerary [Trip, Event]
 
 **purpose** allow for easier itinerary crafting between multiple people
 

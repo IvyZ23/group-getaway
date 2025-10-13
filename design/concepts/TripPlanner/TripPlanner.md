@@ -1,4 +1,4 @@
-**concept** TripPlanner [User]
+**concept** TripPlanner [User, Participant]
 
 **purpose** keep details about a trip all in one place
 
