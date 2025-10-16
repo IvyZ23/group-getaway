@@ -30,16 +30,17 @@ create(trip:Trip): Itinerary
 
 addEvent(name: String, cost: Number, itinerary: Itinerary)
 
+-   **requires** itinerary to not be finalized
 -   **effects** add new pending event to the itinerary
 
 updateEvent(event: Event, name: String, cost: Number, itinerary: Itinerary)
 
--   **requires** event in itinerary to exist
+-   **requires** event in itinerary to exist and  itinerary to not be finalized
 -   **effects** updates event
 
 approveEvent(event: Event, approved: Flag, itinerary: Itinerary)
 
--   **requires** event to exist in itinerary
+-   **requires** event to exist in itinerary and itinerary to not be finalized
 -   **effects** sets approval flag for itinerary and update pending to false
 
 finalizeItinerary(itinerary: Itinerary, finalized: Flag)

@@ -1,3 +1,59 @@
+---
+timestamp: 'Wed Oct 15 2025 15:24:39 GMT-0400 (Eastern Daylight Time)'
+parent: '[[../20251015_152439.5cf0da1b.md]]'
+content_id: 87ded5a71c7dd0a658d09cd7b3fb0eb0d28817359fcf2bbf20263af6f14799d8
+---
+
+# implement: Cost Splitting
+
+**concept** CostSplitting \[Itinerary, Item]
+
+**purpose** allow for easier planning on how an expense would be paid for
+
+**principle** An expense is created. Users can add themselves as
+a contributor and cover a certain amount of the expense. Once the expense
+has been fully covered, users can no longer contribute.
+
+**state**
+
+a set of Expenses with
+
+* an item Item
+* a cost Number
+* a set of Contributors
+* a covered Flag
+
+a set of Contributors
+
+* a user User
+* a amount Number
+
+**actions**
+
+create(item: Item, cost: Number): Expense
+
+* **requires** item to not already be added as an expense
+* **effects** creates new expense
+
+remove(expense: Expense)
+
+* **requires** expense to exist
+* **effects** deletes expense and contributions associated with it
+
+addContribution(user: User, expense: Expense, amount: Number)
+
+* **requires** expense to exist and amount to not be more than what is needed
+* **effects** if user already exists as contributor, merge the amounts, else add user as a new contributor
+
+updateContribution(user: User, new: Number, expense: Expense)
+
+* **requires** user to exist as a contributor for expense
+* **effects** updates user's contribution amount
+
+Here's the TypeScript implementation for the `CostSplitting` concept, following the provided guidelines for concept design and MongoDB integration.
+
+```typescript
+// file: src/CostSplitting/CostSplittingConcept.ts
 import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "../../utils/types.ts"; // Assuming utils are two directories up
 import { freshID } from "../../utils/database.ts"; // Assuming utils are two directories up
@@ -14,8 +70,8 @@ const PREFIX = "CostSplitting" + ".";
 // Generic types for this concept, as defined in the concept header.
 // They are treated polymorphically and are essentially unique identifiers (IDs).
 type Itinerary = ID; // Defined as per concept header, though not directly used in actions/state below.
-type Item = ID; // The item being split (e.g., "dinner", "flight ticket")
-type User = ID; // The user contributing to an expense
+type Item = ID;     // The item being split (e.g., "dinner", "flight ticket")
+type User = ID;     // The user contributing to an expense
 
 /**
  * Represents an individual contribution to an expense.
@@ -63,9 +119,7 @@ export default class CostSplittingConcept {
    * @effects Creates a new expense document in the database with the given item and cost.
    *          Initializes with an empty list of contributors and 'covered' set to false.
    */
-  async create(
-    { item, cost }: { item: Item; cost: number },
-  ): Promise<{ expenseId: ID } | { error: string }> {
+  async create({ item, cost }: { item: Item; cost: number }): Promise<{ expenseId: ID } | { error: string }> {
     if (cost <= 0) {
       return { error: "Expense cost must be positive." };
     }
@@ -88,10 +142,7 @@ export default class CostSplittingConcept {
       await this.expenses.insertOne(newExpense);
       return { expenseId: newExpense._id };
     } catch (e) {
-      console.error(
-        `CostSplittingConcept: Error creating expense for item '${item}':`,
-        e,
-      );
+      console.error(`CostSplittingConcept: Error creating expense for item '${item}':`, e);
       return { error: "Failed to create expense due to an internal error." };
     }
   }
@@ -102,56 +153,11 @@ export default class CostSplittingConcept {
    * @requires expense to exist.
    * @effects Deletes the expense document and all associated contributions (since they are embedded).
    */
-  async remove(
-    { expenseId }: { expenseId: ID },
-  ): Promise<Empty | { error: string }> {
+  async remove({ expenseId }: { expenseId: ID }): Promise<Empty | { error: string }> {
     const result = await this.expenses.deleteOne({ _id: expenseId });
     if (result.deletedCount === 0) {
       return { error: `Expense with ID '${expenseId}' not found.` };
     }
-    return {};
-  }
-
-  /**
-   * updateCost (expenseId: ID, newCost: Number)
-   *
-   * @requires Expense exists and newCost > 0
-   * @effects Updates the cost of the expense and recalculates the covered flag.
-   */
-  async updateCost({
-    expenseId,
-    newCost,
-  }: {
-    expenseId: ID;
-    newCost: number;
-  }): Promise<Empty | { error: string }> {
-    if (newCost <= 0) {
-      return { error: "New cost must be positive." };
-    }
-
-    const expenseDoc = await this.expenses.findOne({ _id: expenseId });
-    if (!expenseDoc) {
-      return { error: `Expense '${expenseId}' not found.` };
-    }
-
-    // Recalculate covered status based on *current* total contributions and the *new* cost
-    const totalResult = await this._getTotalContributions({ expenseId });
-    if ("error" in totalResult) {
-      return totalResult;
-    }
-
-    const newCoveredStatus = totalResult.total >= newCost;
-
-    await this.expenses.updateOne(
-      { _id: expenseId },
-      {
-        $set: {
-          cost: newCost,
-          covered: newCoveredStatus,
-        },
-      },
-    );
-
     return {};
   }
 
@@ -181,15 +187,10 @@ export default class CostSplittingConcept {
       return { error: `Expense with ID '${expenseId}' not found.` };
     }
     if (expense.covered) {
-      return {
-        error:
-          `Expense '${expenseId}' is already fully covered. No more contributions can be added.`,
-      };
+      return { error: `Expense '${expenseId}' is already fully covered. No more contributions can be added.` };
     }
 
-    const existingContributor = expense.contributors.find((c) =>
-      c.userId === userId
-    );
+    const existingContributor = expense.contributors.find((c) => c.userId === userId);
     let newTotalForUser;
 
     if (existingContributor) {
@@ -204,13 +205,11 @@ export default class CostSplittingConcept {
       .filter((c) => c.userId !== userId)
       .reduce((sum, c) => sum + c.amount, 0);
 
-    const prospectiveTotalContributions =
-      currentTotalContributionsExcludingUser + newTotalForUser;
+    const prospectiveTotalContributions = currentTotalContributionsExcludingUser + newTotalForUser;
 
     if (prospectiveTotalContributions > expense.cost) {
       return {
-        error:
-          `Contribution amount '${amount}' would cause total contributions '${prospectiveTotalContributions}' to exceed the expense cost '${expense.cost}'.`,
+        error: `Contribution amount '${amount}' would cause total contributions '${prospectiveTotalContributions}' to exceed the expense cost '${expense.cost}'.`,
       };
     }
 
@@ -239,19 +238,13 @@ export default class CostSplittingConcept {
 
     if (updateResult.matchedCount === 0) {
       // This might indicate a concurrent modification or deletion of the expense.
-      return {
-        error:
-          "Failed to update expense contributors. Expense might have been modified concurrently.",
-      };
+      return { error: "Failed to update expense contributors. Expense might have been modified concurrently." };
     }
 
     // After updating, re-evaluate and update 'covered' status if necessary
     const updatedExpense = await this.expenses.findOne({ _id: expenseId });
     if (updatedExpense) {
-      const newTotalContributions = updatedExpense.contributors.reduce(
-        (sum, c) => sum + c.amount,
-        0,
-      );
+      const newTotalContributions = updatedExpense.contributors.reduce((sum, c) => sum + c.amount, 0);
       const newCoveredStatus = newTotalContributions >= updatedExpense.cost;
 
       if (newCoveredStatus !== updatedExpense.covered) {
@@ -293,14 +286,9 @@ export default class CostSplittingConcept {
       return { error: `Expense with ID '${expenseId}' not found.` };
     }
 
-    const existingContributor = expense.contributors.find((c) =>
-      c.userId === userId
-    );
+    const existingContributor = expense.contributors.find((c) => c.userId === userId);
     if (!existingContributor) {
-      return {
-        error:
-          `User '${userId}' is not a contributor for expense '${expenseId}'.`,
-      };
+      return { error: `User '${userId}' is not a contributor for expense '${expenseId}'.` };
     }
 
     // Calculate total contributions, excluding the current user's *original* contribution,
@@ -309,14 +297,12 @@ export default class CostSplittingConcept {
       .filter((c) => c.userId !== userId)
       .reduce((sum, c) => sum + c.amount, 0);
 
-    const prospectiveTotalContributions =
-      currentTotalContributionsExcludingUser + newAmount;
+    const prospectiveTotalContributions = currentTotalContributionsExcludingUser + newAmount;
 
     // Check against the expense cost to ensure we don't exceed it.
     if (prospectiveTotalContributions > expense.cost) {
       return {
-        error:
-          `New contribution amount '${newAmount}' for user '${userId}' would cause total contributions '${prospectiveTotalContributions}' to exceed the expense cost '${expense.cost}'.`,
+        error: `New contribution amount '${newAmount}' for user '${userId}' would cause total contributions '${prospectiveTotalContributions}' to exceed the expense cost '${expense.cost}'.`,
       };
     }
 
@@ -332,19 +318,13 @@ export default class CostSplittingConcept {
     if (updateResult.matchedCount === 0) {
       // This should ideally not happen if 'existingContributor' was found and expense exists,
       // but provides safety against concurrent modifications.
-      return {
-        error:
-          "Failed to update contribution. Expense or contributor not found or concurrently modified.",
-      };
+      return { error: "Failed to update contribution. Expense or contributor not found or concurrently modified." };
     }
 
     // After updating, re-evaluate and update 'covered' status if necessary
     const updatedExpense = await this.expenses.findOne({ _id: expenseId });
     if (updatedExpense) {
-      const newTotalContributions = updatedExpense.contributors.reduce(
-        (sum, c) => sum + c.amount,
-        0,
-      );
+      const newTotalContributions = updatedExpense.contributors.reduce((sum, c) => sum + c.amount, 0);
       const newCoveredStatus = newTotalContributions >= updatedExpense.cost;
 
       if (newCoveredStatus !== updatedExpense.covered) {
@@ -366,9 +346,7 @@ export default class CostSplittingConcept {
    * _getExpense({ expenseId: ID }): Promise<ExpenseDocument | null>
    * Retrieves an expense document by its unique identifier.
    */
-  async _getExpense(
-    { expenseId }: { expenseId: ID },
-  ): Promise<ExpenseDocument | null> {
+  async _getExpense({ expenseId }: { expenseId: ID }): Promise<ExpenseDocument | null> {
     return this.expenses.findOne({ _id: expenseId });
   }
 
@@ -376,9 +354,7 @@ export default class CostSplittingConcept {
    * _getExpensesByItem({ item: Item }): Promise<ExpenseDocument[]>
    * Retrieves all expense documents associated with a particular item ID.
    */
-  async _getExpensesByItem(
-    { item }: { item: Item },
-  ): Promise<ExpenseDocument[]> {
+  async _getExpensesByItem({ item }: { item: Item }): Promise<ExpenseDocument[]> {
     return this.expenses.find({ item }).toArray();
   }
 
@@ -386,9 +362,7 @@ export default class CostSplittingConcept {
    * _getTotalContributions({ expenseId: ID }): Promise<{ total: number } | { error: string }>
    * Calculates the current total amount contributed to a specific expense.
    */
-  async _getTotalContributions(
-    { expenseId }: { expenseId: ID },
-  ): Promise<{ total: number } | { error: string }> {
+  async _getTotalContributions({ expenseId }: { expenseId: ID }): Promise<{ total: number } | { error: string }> {
     const expense = await this.expenses.findOne({ _id: expenseId });
     if (!expense) {
       return { error: `Expense with ID '${expenseId}' not found.` };
@@ -414,11 +388,9 @@ export default class CostSplittingConcept {
     }
     const contribution = expense.contributors.find((c) => c.userId === userId);
     if (!contribution) {
-      return {
-        error:
-          `User '${userId}' is not a contributor for expense '${expenseId}'.`,
-      };
+      return { error: `User '${userId}' is not a contributor for expense '${expenseId}'.` };
     }
     return { amount: contribution.amount };
   }
 }
+```

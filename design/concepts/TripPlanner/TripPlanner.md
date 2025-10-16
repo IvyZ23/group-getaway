@@ -25,39 +25,39 @@ a set of Participants with
 
 create(user:User, destination: String, dataRange: DataRange, name: String): Trip
 
--   **requires** trip under user with same destination and date range not to already exist
--   **effects** creates new trip
+-   **requires** trip created user with same destination and date range not to already exist
+-   **effects** creates new trip, with name, destination, date range, and the participant list set to have the creator
 
 update(user: User, trip: Trip, destination: String, date: DateRange, name: String)
 
--   **requires** trip that belongs to user to exist
+-   **requires** trip to exist and that the user is the creator of it
 -   **effects** updates trip info
 
 finalize(user: User, trip: Trip, finalize: Flag)
 
--   **requires** trip that belongs to user to exist
+-   **requires** trip to exist and user is the creator of it
 -   **effects** updates finalized flag of trip
 
 delete(user: User, trip: Trip)
 
--   **requires** trip that belongs to user to exist
+-   **requires** trip to exist and user is the creator of it
 -   **effects** deletes trip
 
-addParticipant(user: User, trip: Trip)
+addParticipant(actingUser: User, user: User, trip: Trip)
 
--   **requires** user to not already exist in trip
+-   **requires** user to not already exist in trip and the acting user to be the creator of the trip
 -   **effects** adds user to trip
 
-updateParticipant(user: User, budget: Number, trip: Trip)
+updateParticipant(actingUser: User, user: User, budget: Number, trip: Trip)
 
--   **requires** user to exist as a participant of trip
+-   **requires** user to exist as a participant of trip and the acting user to be the creator of the trip
 -   **effects** updates user info in trip
 
-removeParticipant(user: User, trip: Trip)
+removeParticipant(actingUser: User, user: User, trip: Trip)
 
--   **requires** user to exist as a participant of trip
+-   **requires** user to exist as a participant of trip and the acting user to be the creator of the trip
 -   **effects** removes user from trip
 
 removeSelf (user:User, trip: Trip)
--   **requires** user to exist as a participant of trip
+-   **requires** user to exist as a participant of trip and the user to not be the creator
 -   **effects** removes user from trip

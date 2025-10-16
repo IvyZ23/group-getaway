@@ -282,3 +282,79 @@ Deno.test("prevents updating contribution that exceeds total cost", async () => 
 
   await client.close();
 });
+
+// --------------------------------------------------------------------------------------------
+// 8. Lowering costs should not cause covered flag to become false if previously true
+// --------------------------------------------------------------------------------------------
+Deno.test("CostSplitting: updateCost - lower cost when already fully covered (over-contribution scenario)", async () => {
+  const [db, client] = await testDb();
+  const concept = new CostSplittingConcept(db);
+
+  const item1 = "item:Lunch" as ID;
+  const userA = "user:Alice" as ID;
+  const userB = "user:Bob" as ID;
+
+  const initialCost = 100;
+  const contributionA = 60;
+  const contributionB = 40;
+  const newLowerCost = 80;
+
+  const createResult = await concept.create({ item: item1, cost: initialCost });
+  if ("error" in createResult) throw new Error(createResult.error);
+  const expenseId = createResult.expenseId as ID;
+
+  const addA = await concept.addContribution({
+    userId: userA,
+    expenseId,
+    amount: contributionA,
+  });
+  if ("error" in addA) throw new Error(addA.error);
+
+  const addB = await concept.addContribution({
+    userId: userB,
+    expenseId,
+    amount: contributionB,
+  });
+  if ("error" in addB) throw new Error(addB.error);
+
+  const expenseBefore = await concept._getExpense({ expenseId });
+  assertExists(expenseBefore, "Expense should exist after contributions");
+
+  const totalBefore = expenseBefore.contributors.reduce(
+    (sum, c) => sum + c.amount,
+    0,
+  );
+
+  assertEquals(expenseBefore.cost, initialCost);
+  assertEquals(totalBefore, contributionA + contributionB);
+  assertEquals(expenseBefore.covered, true);
+
+  const updateCostResult = await concept.updateCost({
+    expenseId,
+    newCost: newLowerCost,
+  });
+  if ("error" in updateCostResult) throw new Error(updateCostResult.error);
+
+  const expenseAfter = await concept._getExpense({ expenseId });
+  assertExists(expenseAfter, "Expense should exist after cost update");
+
+  const totalAfter = expenseAfter.contributors.reduce(
+    (sum, c) => sum + c.amount,
+    0,
+  );
+
+  assertEquals(expenseAfter.cost, newLowerCost, "Cost should update to 80.");
+  assertEquals(
+    totalAfter,
+    contributionA + contributionB,
+    "Total contributions remain 100.",
+  );
+  assertEquals(expenseAfter.covered, true, "Expense remains covered.");
+  assertEquals(
+    totalAfter > expenseAfter.cost,
+    true,
+    "Expense is over-contributed.",
+  );
+
+  await client.close();
+});
