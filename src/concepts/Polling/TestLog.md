@@ -1,3 +1,4 @@
+```text
 running 10 tests from ./src/concepts/Polling/PollingConcept.test.ts
 PollingConcept: Operational Principle fulfillment ... ok (1s)
 PollingConcept: Adding duplicate option fails ... ok (647ms)
@@ -11,3 +12,4 @@ PollingConcept: Add vote after close fails ... ok (560ms)
 PollingConcept: Update vote after close fails ... ok (807ms)
 
 ok | 10 passed | 0 failed (7s)
+```

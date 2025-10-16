@@ -1,3 +1,4 @@
+```text
 running 8 tests from ./src/concepts/TripPlanning/TripPlanningConcept.test.ts
 TripPlanningConcept: create trip ... ok (647ms)
 TripPlanningConcept: prevent duplicate trip creation ... ok (594ms)
@@ -9,3 +10,4 @@ TripPlanningConcept: reject non-owner modifications except self removal ... ok (
 TripPlanningConcept: queries return correct data including participants ... ok (682ms)
 
 ok | 8 passed | 0 failed (5s)
+```

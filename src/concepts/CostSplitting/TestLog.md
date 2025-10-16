@@ -1,3 +1,4 @@
+```text
 running 12 tests from ./src/concepts/CostSplitting/CostSplittingConcept.test.ts
 models the operational principle correctly ... ok (880ms)
 prevents creating expense with non-positive cost ... ok (477ms)
@@ -13,3 +14,4 @@ prevents updating contribution that exceeds total cost ... ok (705ms)
 CostSplitting: updateCost - lower cost when already fully covered (over-contribution scenario) ... ok (717ms)
 
 ok | 12 passed | 0 failed (7s)
+```
