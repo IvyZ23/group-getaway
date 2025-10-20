@@ -46,16 +46,17 @@ export default class TripPlannerConcept {
    * @effects creates new trip, adding the owner as the initial participant.
    */
   async create({
-    owner,
-    destination,
     dateRange,
+    destination,
     name,
+    owner,
   }: {
     owner: User;
     destination: string;
     dateRange: DateRange;
     name: string;
   }): Promise<{ tripId: Trip } | { error: string }> {
+    // console.log(owner, destination, dateRange, name);
     const existingTrip = await this.trips.findOne({
       owner,
       destination,

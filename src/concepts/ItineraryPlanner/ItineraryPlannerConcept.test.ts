@@ -5,7 +5,7 @@ import {
 } from "jsr:@std/assert";
 import { freshID, testDb } from "@utils/database.ts";
 import { ID } from "@utils/types.ts";
-import PlanItineraryConcept from "./PlanItineraryConcept.ts";
+import PlanItineraryConcept from "./ItineraryPlannerConcept.ts";
 
 // --- Test: Create Itinerary ---
 Deno.test("should create an itinerary", async () => {

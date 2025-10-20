@@ -24,6 +24,22 @@ async function main() {
   const [db] = await getDb();
   const app = new Hono();
 
+  // --- CORS Middleware ---
+  app.use("*", (c, next) => {
+    c.header("Access-Control-Allow-Origin", "*");
+    c.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+    if (c.req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: c.res.headers,
+      });
+    }
+
+    return next();
+  });
+
   app.get("/", (c) => c.text("Concept Server is running."));
 
   // --- Dynamic Concept Loading and Routing ---
