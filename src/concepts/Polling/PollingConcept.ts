@@ -1,178 +1,132 @@
-import { Collection, Db, ObjectId } from "npm:mongodb";
+import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
 
-/**
- * PollingConcept
- * purpose: use majority vote to make a decision
- */
 const PREFIX = "Polling" + ".";
 
-// Generic types of this concept
 type User = ID;
 type Option = ID;
-type Poll = ID; // The ID of a specific poll
+type Poll = ID;
 
-/**
- * a set of Polls with
- *   a name String
- *   a set of Users (participating in the poll)
- *   a set of Options (available for voting)
- *   a creator User
- *   a closed Flag
- */
-interface PollDoc {
-  _id: Poll;
-  name: string;
-  users: User[]; // Users participating in this poll
-  options: Option[]; // Options available in this poll
-  creator: User;
-  closed: boolean;
+interface OptionDoc {
+  _id: Option;
+  label: string;
 }
 
-/**
- * a set of Votes with
- *   a poll ID
- *   a user User
- *   a vote Option
- */
 interface VoteDoc {
-  _id: ID; // Unique ID for the vote record
-  pollId: Poll;
   userId: User;
   optionId: Option;
 }
 
+interface PollDoc {
+  _id: Poll;
+  name: string;
+  users: User[];
+  options: OptionDoc[];
+  votes: VoteDoc[];
+  creator: User;
+  closed: boolean;
+}
+
 export default class PollingConcept {
   private polls: Collection<PollDoc>;
-  private votes: Collection<VoteDoc>;
 
   constructor(private readonly db: Db) {
     this.polls = this.db.collection(PREFIX + "polls");
-    this.votes = this.db.collection(PREFIX + "votes");
   }
 
-  /**
-   * create(user: User, name: String): Poll
-   * requires: a poll under the user with the same name not to already exist
-   * effects: creates new poll
-   */
-  async create({ user, name }: { user: User; name: string }): Promise<
-    { poll: Poll } | { error: string }
-  > {
-    // Check requires: a poll under the user with the same name not to already exist
-    const existingPoll = await this.polls.findOne({
-      creator: user,
-      name: name,
-    });
+  // --- Core functionality ---
+
+  async create(
+    { user, name }: { user: User; name: string },
+  ): Promise<{ poll: Poll } | { error: string }> {
+    const existingPoll = await this.polls.findOne({ creator: user, name });
     if (existingPoll) {
       return { error: "A poll with this name already exists for this user." };
     }
 
-    // effects: creates new poll
     const newPollId = freshID();
     const result = await this.polls.insertOne({
       _id: newPollId,
       name,
-      users: [user], // Creator is automatically a user in the poll
+      users: [user],
       options: [],
+      votes: [],
       creator: user,
       closed: false,
     });
 
-    if (!result.acknowledged) {
-      return { error: "Failed to create poll." };
-    }
-
+    if (!result.acknowledged) return { error: "Failed to create poll." };
     return { poll: newPollId };
   }
 
-  /**
-   * addOption(actingUser: User, poll: Poll, option: Option)
-   * requires: poll to exist, actingUser to be the creator, poll not to be closed, and option to not already exist in poll's options
-   * effects: adds option to poll
-   */
   async addOption(
-    { actingUser, poll, option }: {
+    { actingUser, poll, label }: {
       actingUser: User;
       poll: Poll;
-      option: Option;
+      label: string;
     },
   ): Promise<Empty | { error: string }> {
     const existingPoll = await this.polls.findOne({ _id: poll });
-    if (!existingPoll) {
-      return { error: "Poll not found." };
-    }
-    // Creator authorization check
+    if (!existingPoll) return { error: "Poll not found." };
     if (existingPoll.creator !== actingUser) {
       return { error: "Only the poll creator can add options." };
     }
+    console.log(existingPoll, "poll");
     if (existingPoll.closed) {
       return { error: "Cannot add option to a closed poll." };
     }
-    if (existingPoll.options.includes(option)) {
-      return { error: "Option already exists in this poll." };
+
+    if (existingPoll.options.some((o) => o.label === label)) {
+      return { error: "Option with this label already exists." };
     }
+
+    const newOption: OptionDoc = { _id: freshID() as Option, label };
 
     const result = await this.polls.updateOne(
       { _id: poll },
-      { $addToSet: { options: option } },
+      { $push: { options: newOption } },
     );
-
     if (result.matchedCount === 0) {
-      // This should ideally not happen if existingPoll was found
       return { error: "Poll not found or not updated." };
     }
+    console.log(result);
+
     return {};
   }
 
-  /**
-   * removeOption(actingUser: User, poll: Poll, option: Option)
-   * requires: poll to exist, actingUser to be the creator, poll not to be closed, and option to exist in poll's options
-   * effects: removes option from poll and any votes for that option in that poll
-   */
   async removeOption(
-    { actingUser, poll, option }: {
+    { actingUser, poll, optionId }: {
       actingUser: User;
       poll: Poll;
-      option: Option;
+      optionId: Option;
     },
   ): Promise<Empty | { error: string }> {
     const existingPoll = await this.polls.findOne({ _id: poll });
-    if (!existingPoll) {
-      return { error: "Poll not found." };
-    }
-    // Creator authorization check
+    if (!existingPoll) return { error: "Poll not found." };
     if (existingPoll.creator !== actingUser) {
       return { error: "Only the poll creator can remove options." };
     }
     if (existingPoll.closed) {
       return { error: "Cannot remove option from a closed poll." };
     }
-    if (!existingPoll.options.includes(option)) {
-      return { error: "Option does not exist in this poll." };
+    if (!existingPoll.options.some((o) => o._id === optionId)) {
+      return { error: "Option not found." };
     }
 
-    const result = await this.polls.updateOne(
+    await this.polls.updateOne(
       { _id: poll },
-      { $pull: { options: option } },
+      {
+        $pull: {
+          options: { _id: optionId },
+          votes: { optionId },
+        },
+      },
     );
-
-    if (result.matchedCount === 0) {
-      return { error: "Poll not found or not updated." };
-    }
-
-    // Also remove any votes associated with this option for this poll
-    await this.votes.deleteMany({ pollId: poll, optionId: option });
 
     return {};
   }
 
-  /**
-   * addUser(actingUser: User, poll: Poll, userToAdd: User)
-   * requires: poll to exist, actingUser to be the creator, poll not to be closed, and userToAdd to not already be added to poll
-   * effects: adds userToAdd to poll
-   */
   async addUser(
     { actingUser, poll, userToAdd }: {
       actingUser: User;
@@ -180,29 +134,22 @@ export default class PollingConcept {
       userToAdd: User;
     },
   ): Promise<Empty | { error: string }> {
-    const existingPoll = await this.polls.findOne({ _id: poll });
-    if (!existingPoll) {
-      return { error: "Poll not found." };
-    }
-    // Creator authorization check
-    if (existingPoll.creator !== actingUser) {
+    const pollDoc = await this.polls.findOne({ _id: poll });
+    if (!pollDoc) return { error: "Poll not found." };
+    if (pollDoc.creator !== actingUser) {
       return { error: "Only the poll creator can add users." };
     }
-    if (existingPoll.closed) {
+    if (pollDoc.closed) {
       return { error: "Cannot add user to a closed poll." };
     }
-    if (existingPoll.users.includes(userToAdd)) {
-      return { error: "User already participating in this poll." };
+    if (pollDoc.users.includes(userToAdd)) {
+      return { error: "User already in poll." };
     }
 
-    const result = await this.polls.updateOne(
+    await this.polls.updateOne(
       { _id: poll },
       { $addToSet: { users: userToAdd } },
     );
-
-    if (result.matchedCount === 0) {
-      return { error: "Poll not found or not updated." };
-    }
     return {};
   }
 
@@ -218,227 +165,153 @@ export default class PollingConcept {
       userToRemove: User;
     },
   ): Promise<Empty | { error: string }> {
+    // Find poll
     const existingPoll = await this.polls.findOne({ _id: poll });
     if (!existingPoll) {
       return { error: "Poll not found." };
     }
-    // Creator authorization check
+
+    // Authorization: only creator can remove
     if (existingPoll.creator !== actingUser) {
       return { error: "Only the poll creator can remove users." };
     }
+
+    // Cannot modify closed poll
     if (existingPoll.closed) {
       return { error: "Cannot remove user from a closed poll." };
     }
+
+    // Check user participation
     if (!existingPoll.users.includes(userToRemove)) {
       return { error: "User is not participating in this poll." };
     }
+
+    // Creator cannot be removed
     if (existingPoll.creator === userToRemove) {
       return { error: "Cannot remove the poll creator." };
     }
 
+    // Remove user from list and delete any of their votes
+    const updatedUsers = existingPoll.users.filter((u) => u !== userToRemove);
+    const updatedVotes = existingPoll.votes.filter(
+      (v) => v.userId !== userToRemove,
+    );
+
     const result = await this.polls.updateOne(
       { _id: poll },
-      { $pull: { users: userToRemove } },
+      { $set: { users: updatedUsers, votes: updatedVotes } },
     );
 
     if (result.matchedCount === 0) {
       return { error: "Poll not found or not updated." };
     }
 
-    // Also remove any votes associated with this user for this poll
-    await this.votes.deleteMany({ pollId: poll, userId: userToRemove });
-
     return {};
   }
 
-  /**
-   * addVote(user: User, option: Option, poll: Poll)
-   * requires: poll to exist, user to be in poll's users, vote option to be in poll's options,
-   *           poll not to be closed, and user not to have already voted in this poll
-   * effects: adds new vote to poll
-   */
   async addVote(
-    { user, option, poll }: { user: User; option: Option; poll: Poll },
+    { user, optionId, poll }: {
+      user: User;
+      optionId: Option;
+      poll: Poll;
+    },
   ): Promise<Empty | { error: string }> {
-    const existingPoll = await this.polls.findOne({ _id: poll });
-    if (!existingPoll) {
-      return { error: "Poll not found." };
+    const pollDoc = await this.polls.findOne({ _id: poll });
+    if (!pollDoc) return { error: "Poll not found." };
+    if (pollDoc.closed) return { error: "Poll is closed." };
+    if (!pollDoc.users.includes(user)) {
+      return { error: "User not part of this poll." };
     }
-    if (existingPoll.closed) {
-      return { error: "Cannot vote on a closed poll." };
-    }
-    if (!existingPoll.users.includes(user)) {
-      return { error: "User is not a participant in this poll." };
-    }
-    if (!existingPoll.options.includes(option)) {
-      return { error: "Option does not exist in this poll." };
+    if (!pollDoc.options.some((o) => o._id === optionId)) {
+      return { error: "Option does not exist." };
     }
 
-    // Check if user has already voted
-    const existingVote = await this.votes.findOne({
-      pollId: poll,
-      userId: user,
-    });
-    if (existingVote) {
-      return {
-        error: "User has already voted. Use updateVote to change your vote.",
-      };
+    if (pollDoc.votes.some((v) => v.userId === user)) {
+      return { error: "User already voted." };
     }
 
-    const newVoteId = freshID();
-    const result = await this.votes.insertOne({
-      _id: newVoteId,
-      pollId: poll,
-      userId: user,
-      optionId: option,
-    });
-
-    if (!result.acknowledged) {
-      return { error: "Failed to add vote." };
-    }
-
+    const newVote: VoteDoc = { userId: user, optionId };
+    await this.polls.updateOne({ _id: poll }, { $push: { votes: newVote } });
     return {};
   }
 
-  /**
-   * updateVote(user: User, newOption: Option, poll: Poll)
-   * requires: poll to exist, user's vote to exist in poll, newOption to exist in poll's options,
-   *           and poll not to be closed
-   * effects: updates the user's vote with new option
-   */
   async updateVote(
-    { user, newOption, poll }: { user: User; newOption: Option; poll: Poll },
+    { user, newOption, poll }: {
+      user: User;
+      newOption: Option;
+      poll: Poll;
+    },
   ): Promise<Empty | { error: string }> {
-    const existingPoll = await this.polls.findOne({ _id: poll });
-    if (!existingPoll) {
-      return { error: "Poll not found." };
-    }
-    if (existingPoll.closed) {
-      return { error: "Cannot update vote on a closed poll." };
-    }
-    if (!existingPoll.users.includes(user)) {
-      return { error: "User is not a participant in this poll." };
-    }
-    if (!existingPoll.options.includes(newOption)) {
-      return { error: "New option does not exist in this poll." };
+    const pollDoc = await this.polls.findOne({ _id: poll });
+    if (!pollDoc) return { error: "Poll not found." };
+    if (pollDoc.closed) return { error: "Poll is closed." };
+    if (!pollDoc.options.some((o) => o._id === newOption)) {
+      return { error: "Option does not exist." };
     }
 
-    // Check if user has an existing vote
-    const existingVote = await this.votes.findOne({
-      pollId: poll,
-      userId: user,
+    const voteIndex = pollDoc.votes.findIndex((v) => v.userId === user);
+    if (voteIndex === -1) return { error: "User has not voted." };
+
+    pollDoc.votes[voteIndex].optionId = newOption;
+    await this.polls.updateOne({ _id: poll }, {
+      $set: { votes: pollDoc.votes },
     });
-    if (!existingVote) {
-      return {
-        error: "User has not voted yet. Use addVote to cast a new vote.",
-      };
-    }
-
-    const result = await this.votes.updateOne(
-      { _id: existingVote._id },
-      { $set: { optionId: newOption } },
-    );
-
-    if (result.matchedCount === 0) {
-      return { error: "Vote not found or not updated." };
-    }
     return {};
   }
 
-  /**
-   * close(actingUser: User, poll: Poll)
-   * requires: poll to exist and the actingUser to be the creator
-   * effects: closes poll
-   */
-  async close({ actingUser, poll }: { actingUser: User; poll: Poll }): Promise<
-    Empty | { error: string }
-  > {
-    const existingPoll = await this.polls.findOne({ _id: poll });
-    if (!existingPoll) {
-      return { error: "Poll not found." };
-    }
-    // Creator authorization check
-    if (existingPoll.creator !== actingUser) {
+  async close(
+    { actingUser, poll }: { actingUser: User; poll: Poll },
+  ): Promise<Empty | { error: string }> {
+    const pollDoc = await this.polls.findOne({ _id: poll });
+    if (!pollDoc) return { error: "Poll not found." };
+    if (pollDoc.creator !== actingUser) {
       return { error: "Only the poll creator can close the poll." };
     }
-    if (existingPoll.closed) {
-      return { error: "Poll is already closed." };
-    }
+    if (pollDoc.closed) return { error: "Poll already closed." };
 
-    const result = await this.polls.updateOne(
-      { _id: poll },
-      { $set: { closed: true } },
-    );
-
-    if (result.matchedCount === 0) {
-      return { error: "Poll not found or not updated." };
-    }
+    await this.polls.updateOne({ _id: poll }, { $set: { closed: true } });
     return {};
   }
 
-  /**
-   * getResult(poll: Poll): Option
-   * requires: poll to exist
-   * effects: returns the highest voted option (or null if no votes or options)
-   */
-  async getResult({ poll }: { poll: Poll }): Promise<
-    { option: Option | null } | { error: string }
-  > {
-    const existingPoll = await this.polls.findOne({ _id: poll });
-    if (!existingPoll) {
-      return { error: "Poll not found." };
+  async getResult(
+    { poll }: { poll: Poll },
+  ): Promise<{ option: Option | null } | { error: string }> {
+    const pollDoc = await this.polls.findOne({ _id: poll });
+    if (!pollDoc) return { error: "Poll not found." };
+    if (pollDoc.votes.length === 0) return { option: null };
+
+    const counts: Record<string, number> = {};
+    for (const vote of pollDoc.votes) {
+      counts[vote.optionId] = (counts[vote.optionId] || 0) + 1;
     }
 
-    // Aggregation pipeline to count votes for each option
-    const aggregationResult = await this.votes.aggregate<
-      { _id: Option; count: number }
-    >([
-      { $match: { pollId: poll } },
-      { $group: { _id: "$optionId", count: { $sum: 1 } } },
-      { $sort: { count: -1 } }, // Sort by count in descending order
-      { $limit: 1 }, // Get the option with the highest count
-    ]).toArray();
-
-    if (aggregationResult.length > 0) {
-      return { option: aggregationResult[0]._id };
-    } else {
-      // No votes, or no options with votes.
-      return { option: null };
-    }
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return { option: (sorted[0]?.[0] as Option) ?? null };
   }
 
-  // --- Query methods ---
+  // --- Queries ---
 
-  /**
-   * _getPoll(poll: Poll)
-   * Returns details of a specific poll.
-   */
-  async _getPoll({ poll }: { poll: Poll }): Promise<
-    { poll: PollDoc | null } | { error: string }
-  > {
-    const pollDoc = await this.polls.findOne({ _id: poll });
+  async _getPoll(
+    { poll }: { poll: Poll },
+  ): Promise<{ poll: PollDoc | null }> {
+    const pollDoc = await this.polls.findOne({ name: poll });
+    console.log(pollDoc, poll);
     return { poll: pollDoc };
   }
 
-  /**
-   * _getVotesForPoll(poll: Poll)
-   * Returns all votes for a specific poll.
-   */
-  async _getVotesForPoll({ poll }: { poll: Poll }): Promise<
-    { votes: VoteDoc[] } | { error: string }
-  > {
-    const votes = await this.votes.find({ pollId: poll }).toArray();
-    return { votes: votes };
+  async _getUserVote(
+    { poll, user }: { poll: Poll; user: User },
+  ): Promise<{ vote: VoteDoc | null }> {
+    const pollDoc = await this.polls.findOne({ _id: poll });
+    if (!pollDoc) return { vote: null };
+    const vote = pollDoc.votes.find((v) => v.userId === user) ?? null;
+    return { vote };
   }
 
-  /**
-   * _getUserVote(poll: Poll, user: User)
-   * Returns a specific user's vote in a poll.
-   */
-  async _getUserVote({ poll, user }: { poll: Poll; user: User }): Promise<
-    { vote: VoteDoc | null } | { error: string }
-  > {
-    const vote = await this.votes.findOne({ pollId: poll, userId: user });
-    return { vote: vote };
+  async _getVotesForPoll(
+    { poll }: { poll: Poll },
+  ): Promise<{ votes: VoteDoc[] }> {
+    const pollDoc = await this.polls.findOne({ _id: poll });
+    return { votes: pollDoc?.votes ?? [] };
   }
 }

@@ -99,4 +99,33 @@ export default class PasswordAuthenticationConcept {
     const userDoc = await this.users.findOne({ username });
     return userDoc ? { user: userDoc._id } : {};
   }
+
+  /**
+   * Search for users by (partial) username match.
+   * Performs a case-insensitive search.
+   */
+  async searchUsers({
+    query,
+    limit = 10,
+  }: {
+    query: string;
+    limit?: number;
+  }): Promise<{ users: { id: User; username: string }[] }> {
+    // Build a case-insensitive regex pattern
+    const regex = new RegExp(query, "i");
+
+    const results = await this.users
+      .find({ username: { $regex: regex } })
+      .limit(limit)
+      .project({ _id: 1, username: 1 })
+      .toArray();
+
+    // Format for clean API response
+    const users = results.map((u) => ({
+      id: u._id,
+      username: u.username,
+    }));
+
+    return { users };
+  }
 }

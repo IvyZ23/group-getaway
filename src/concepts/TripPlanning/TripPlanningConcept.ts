@@ -193,7 +193,7 @@ export default class TripPlannerConcept {
   /**
    * updateParticipant(owner: User, budget: Number, tripId: Trip)
    *
-   * @requires user to exist as a participant of trip (and caller to be owner)
+   * @requires user to exist as a participant of trip (and caller to be owner or user themself)
    * @effects updates user info in trip
    */
   async updateParticipant({
@@ -300,12 +300,16 @@ export default class TripPlannerConcept {
     tripId: Trip;
     owner?: User;
   }): Promise<TripState | null> {
+    console.log(tripId, owner);
     const filter: Record<string, unknown> = { _id: tripId };
     if (owner) filter.owner = owner;
+    // console.log(filter);
+    console.log(await this.trips.findOne(filter));
     return await this.trips.findOne(filter);
   }
 
   async _getTripsByUser({ owner }: { owner: User }): Promise<TripState[]> {
+    // console.log(owner);
     return await this.trips.find({ owner }).toArray();
   }
 
