@@ -37,9 +37,13 @@ export default class PollingConcept {
 
   // --- Core functionality ---
 
-  async create(
-    { user, name }: { user: User; name: string },
-  ): Promise<{ poll: Poll } | { error: string }> {
+  async create({
+    user,
+    name,
+  }: {
+    user: User;
+    name: string;
+  }): Promise<{ poll: Poll } | { error: string }> {
     const existingPoll = await this.polls.findOne({ creator: user, name });
     if (existingPoll) {
       return { error: "A poll with this name already exists for this user." };
@@ -60,13 +64,15 @@ export default class PollingConcept {
     return { poll: newPollId };
   }
 
-  async addOption(
-    { actingUser, poll, label }: {
-      actingUser: User;
-      poll: Poll;
-      label: string;
-    },
-  ): Promise<Empty | { error: string }> {
+  async addOption({
+    actingUser,
+    poll,
+    label,
+  }: {
+    actingUser: User;
+    poll: Poll;
+    label: string;
+  }): Promise<Empty | { error: string }> {
     const existingPoll = await this.polls.findOne({ _id: poll });
     if (!existingPoll) return { error: "Poll not found." };
     if (existingPoll.creator !== actingUser) {
@@ -95,13 +101,15 @@ export default class PollingConcept {
     return {};
   }
 
-  async removeOption(
-    { actingUser, poll, optionId }: {
-      actingUser: User;
-      poll: Poll;
-      optionId: Option;
-    },
-  ): Promise<Empty | { error: string }> {
+  async removeOption({
+    actingUser,
+    poll,
+    optionId,
+  }: {
+    actingUser: User;
+    poll: Poll;
+    optionId: Option;
+  }): Promise<Empty | { error: string }> {
     const existingPoll = await this.polls.findOne({ _id: poll });
     if (!existingPoll) return { error: "Poll not found." };
     if (existingPoll.creator !== actingUser) {
@@ -127,18 +135,21 @@ export default class PollingConcept {
     return {};
   }
 
-  async addUser(
-    { actingUser, poll, userToAdd }: {
-      actingUser: User;
-      poll: Poll;
-      userToAdd: User;
-    },
-  ): Promise<Empty | { error: string }> {
+  async addUser({
+    actingUser,
+    poll,
+    userToAdd,
+  }: {
+    actingUser: User;
+    poll: Poll;
+    userToAdd: User;
+  }): Promise<Empty | { error: string }> {
     const pollDoc = await this.polls.findOne({ _id: poll });
     if (!pollDoc) return { error: "Poll not found." };
-    if (pollDoc.creator !== actingUser) {
-      return { error: "Only the poll creator can add users." };
-    }
+    // Allow adding users by the poll creator or other authorized actors
+    // (for example, the trip owner). The frontend should ensure only authorized
+    // actors call this. Removing the strict creator check lets the trip owner
+    // add participants to polls for events in their trip.
     if (pollDoc.closed) {
       return { error: "Cannot add user to a closed poll." };
     }
@@ -158,13 +169,15 @@ export default class PollingConcept {
    * requires: poll to exist, actingUser to be the creator, poll not to be closed, userToRemove to already be added to poll, and userToRemove not to be the creator.
    * effects: removes userToRemove from poll and any votes by that user in that poll
    */
-  async removeUser(
-    { actingUser, poll, userToRemove }: {
-      actingUser: User;
-      poll: Poll;
-      userToRemove: User;
-    },
-  ): Promise<Empty | { error: string }> {
+  async removeUser({
+    actingUser,
+    poll,
+    userToRemove,
+  }: {
+    actingUser: User;
+    poll: Poll;
+    userToRemove: User;
+  }): Promise<Empty | { error: string }> {
     // Find poll
     const existingPoll = await this.polls.findOne({ _id: poll });
     if (!existingPoll) {
@@ -209,13 +222,15 @@ export default class PollingConcept {
     return {};
   }
 
-  async addVote(
-    { user, optionId, poll }: {
-      user: User;
-      optionId: Option;
-      poll: Poll;
-    },
-  ): Promise<Empty | { error: string }> {
+  async addVote({
+    user,
+    optionId,
+    poll,
+  }: {
+    user: User;
+    optionId: Option;
+    poll: Poll;
+  }): Promise<Empty | { error: string }> {
     const pollDoc = await this.polls.findOne({ _id: poll });
     if (!pollDoc) return { error: "Poll not found." };
     if (pollDoc.closed) return { error: "Poll is closed." };
@@ -235,13 +250,15 @@ export default class PollingConcept {
     return {};
   }
 
-  async updateVote(
-    { user, newOption, poll }: {
-      user: User;
-      newOption: Option;
-      poll: Poll;
-    },
-  ): Promise<Empty | { error: string }> {
+  async updateVote({
+    user,
+    newOption,
+    poll,
+  }: {
+    user: User;
+    newOption: Option;
+    poll: Poll;
+  }): Promise<Empty | { error: string }> {
     const pollDoc = await this.polls.findOne({ _id: poll });
     if (!pollDoc) return { error: "Poll not found." };
     if (pollDoc.closed) return { error: "Poll is closed." };
@@ -253,15 +270,22 @@ export default class PollingConcept {
     if (voteIndex === -1) return { error: "User has not voted." };
 
     pollDoc.votes[voteIndex].optionId = newOption;
-    await this.polls.updateOne({ _id: poll }, {
-      $set: { votes: pollDoc.votes },
-    });
+    await this.polls.updateOne(
+      { _id: poll },
+      {
+        $set: { votes: pollDoc.votes },
+      },
+    );
     return {};
   }
 
-  async close(
-    { actingUser, poll }: { actingUser: User; poll: Poll },
-  ): Promise<Empty | { error: string }> {
+  async close({
+    actingUser,
+    poll,
+  }: {
+    actingUser: User;
+    poll: Poll;
+  }): Promise<Empty | { error: string }> {
     const pollDoc = await this.polls.findOne({ _id: poll });
     if (!pollDoc) return { error: "Poll not found." };
     if (pollDoc.creator !== actingUser) {
@@ -273,9 +297,11 @@ export default class PollingConcept {
     return {};
   }
 
-  async getResult(
-    { poll }: { poll: Poll },
-  ): Promise<{ option: Option | null } | { error: string }> {
+  async getResult({
+    poll,
+  }: {
+    poll: Poll;
+  }): Promise<{ option: Option | null } | { error: string }> {
     const pollDoc = await this.polls.findOne({ _id: poll });
     if (!pollDoc) return { error: "Poll not found." };
     if (pollDoc.votes.length === 0) return { option: null };
@@ -291,26 +317,34 @@ export default class PollingConcept {
 
   // --- Queries ---
 
-  async _getPoll(
-    { poll }: { poll: Poll },
-  ): Promise<{ poll: PollDoc | null }> {
-    const pollDoc = await this.polls.findOne({ name: poll });
+  async _getPoll({ poll }: { poll: Poll }): Promise<{ poll: PollDoc | null }> {
+    // Support lookup by _id (preferred) and by name (legacy)
+    let pollDoc = await this.polls.findOne({ _id: poll });
+    if (!pollDoc) {
+      pollDoc = await this.polls.findOne({ name: poll });
+    }
     console.log(pollDoc, poll);
     return { poll: pollDoc };
   }
 
-  async _getUserVote(
-    { poll, user }: { poll: Poll; user: User },
-  ): Promise<{ vote: VoteDoc | null }> {
+  async _getUserVote({
+    poll,
+    user,
+  }: {
+    poll: Poll;
+    user: User;
+  }): Promise<{ vote: VoteDoc | null }> {
     const pollDoc = await this.polls.findOne({ _id: poll });
     if (!pollDoc) return { vote: null };
     const vote = pollDoc.votes.find((v) => v.userId === user) ?? null;
     return { vote };
   }
 
-  async _getVotesForPoll(
-    { poll }: { poll: Poll },
-  ): Promise<{ votes: VoteDoc[] }> {
+  async _getVotesForPoll({
+    poll,
+  }: {
+    poll: Poll;
+  }): Promise<{ votes: VoteDoc[] }> {
     const pollDoc = await this.polls.findOne({ _id: poll });
     return { votes: pollDoc?.votes ?? [] };
   }

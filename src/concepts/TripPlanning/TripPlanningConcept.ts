@@ -309,8 +309,11 @@ export default class TripPlannerConcept {
   }
 
   async _getTripsByUser({ owner }: { owner: User }): Promise<TripState[]> {
-    // console.log(owner);
-    return await this.trips.find({ owner }).toArray();
+    // Return trips where the user is either the owner or a participant.
+    // This supports client views that show both owned and invited trips.
+    return await this.trips
+      .find({ $or: [{ owner }, { "participants.user": owner }] })
+      .toArray();
   }
 
   async _getParticipantsInTrip({
