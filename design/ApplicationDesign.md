@@ -1,5 +1,26 @@
 # Application Design File
 
+## Assignment 4b: Frontend Implementation
+
+Changes made to concepts:
+
+TripPlanner Concept:
+- Added search user action for adding participants
+- Updated spec for fetch trip by user action so it retrieves trips the user is invited to as well as the trips they created themshelves
+
+ItineraryPlanner Concept:
+- Updated spec so that users can change their own budgets as well
+
+Polling Concept:
+- Relaxed the strict "only poll creator can add users" check in addUser so other authorized callers (trip owners, etc.) can add participants to polls
+
+PasswordAuth Concept:
+- Added action to allow fetching user information by id
+
+
+
+## Assignment 4a: Backend Implementation
+
 I didn't make any major changes to the overall application. The concepts and how they come together to create the entire application remains the same as before. Instead, most of the changes happened in the individual concepts.
 
 ## Interesting Moments
