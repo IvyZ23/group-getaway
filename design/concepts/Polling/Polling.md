@@ -45,8 +45,8 @@ removeOption(actingUser: User, poll: Poll, option: Option)
 
 addUser(actingUser: User, poll: Poll, userToAdd: User)
 
-*   **requires** poll to exist, actingUser to be the creator, poll not to be closed, and userToAdd to not already be added to poll
-*   **effects** adds userToAdd to poll
+- **requires** poll to exist and poll not to be closed. (Implementation does not strictly require actingUser to be the creator; caller authorization is handled by the caller/front-end or higher-level flow.)
+- **effects** adds `userToAdd` to the poll's participant list if not present
 
 removeUser(actingUser: User, poll: Poll, userToRemove: User)
 
@@ -65,10 +65,24 @@ updateVote(user: User, newOption: Option, poll: Poll)
 
 close(actingUser: User, poll: Poll)
 
-*   **requires** poll to exist and the actingUser to be the creator
-*   **effects** closes poll
+- **requires** poll to exist and the actingUser to be the creator
+- **effects** sets the poll's `closed` flag to true; no further votes or modifications allowed
 
-getResult(poll: Poll): Option
+getResult(poll: Poll): Option | null
 
-*   **requires** poll to exist
-*   **effects** returns the highest voted option
+- **requires** poll to exist
+- **effects** returns the option id with the most votes, or `null` if no votes have been cast
+
+**queries**
+
+_getPoll(poll: Poll) -> PollDoc | null
+
+- **effects** returns the full poll document; supports lookup by id or (legacy) by name
+
+_getUserVote(poll: Poll, user: User) -> VoteDoc | null
+
+- **effects** returns the vote record for the user in the poll, or null
+
+_getVotesForPoll(poll: Poll) -> VoteDoc[]
+
+- **effects** returns the array of votes for the poll

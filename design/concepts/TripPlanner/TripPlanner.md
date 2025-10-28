@@ -23,41 +23,56 @@ a set of Participants with
 
 **action**
 
-create(user:User, destination: String, dataRange: DataRange, name: String): Trip
+create(owner: User, destination: String, dateRange: DateRange, name: String): { tripId }
 
--   **requires** trip created user with same destination and date range not to already exist
--   **effects** creates new trip, with name, destination, date range, and the participant list set to have the creator
+- **requires** a trip for `owner` with the same destination and date range must not already exist
+- **effects** creates a new trip, adds the owner as the initial participant (default budget 0), and returns the new `tripId`
 
-update(user: User, trip: Trip, destination: String, date: DateRange, name: String)
+update(owner: User, tripId: Trip, destination: String, dateRange: DateRange, name: String)
 
--   **requires** trip to exist and that the user is the creator of it
--   **effects** updates trip info
+- **requires** trip to exist and caller (`owner`) must be the trip owner
+- **effects** updates trip metadata (name, destination, dateRange)
 
-finalize(user: User, trip: Trip, finalize: Flag)
+finalize(owner: User, tripId: Trip, finalized: Flag)
 
--   **requires** trip to exist and user is the creator of it
--   **effects** updates finalized flag of trip
+- **requires** trip to exist and caller (`owner`) must be the trip owner
+- **effects** sets the trip `finalized` flag
 
-delete(user: User, trip: Trip)
+delete(owner: User, tripId: Trip)
 
--   **requires** trip to exist and user is the creator of it
--   **effects** deletes trip
+- **requires** trip to exist and caller (`owner`) must be the trip owner
+- **effects** deletes the trip and its associated concept data
 
-addParticipant(actingUser: User, user: User, trip: Trip)
+addParticipant(owner: User, tripId: Trip, participantUser: User, budget?: Number)
 
--   **requires** user to not already exist in trip and the acting user to be the creator of the trip
--   **effects** adds user to trip
+- **requires** caller (`owner`) must be the trip owner; `participantUser` must not already be in the trip
+- **effects** adds a participant with an optional `budget` (default 0)
 
-updateParticipant(actingUser: User, user: User, budget: Number, trip: Trip)
+updateParticipant(owner: User, tripId: Trip, participantUser: User, budget: Number)
 
--   **requires** user to exist as a participant of trip and the acting user to be the creator of the trip
--   **effects** updates user info in trip
+- **requires** caller (`owner`) must be the trip owner; `participantUser` must exist as a participant
+- **effects** updates the participant's budget
 
-removeParticipant(actingUser: User, user: User, trip: Trip)
+removeParticipant(owner: User, tripId: Trip, participantUser: User)
 
--   **requires** user to exist as a participant of trip and the acting user to be the creator of the trip
--   **effects** removes user from trip
+- **requires** caller (`owner`) must be the trip owner; `participantUser` must exist as a participant and must not be the owner
+- **effects** removes the participant from the trip
 
-removeSelf (user:User, trip: Trip)
--   **requires** user to exist as a participant of trip and the user to not be the creator
--   **effects** removes user from trip
+removeSelf(user: User, tripId: Trip)
+
+- **requires** user is a participant of the trip and is not the owner
+- **effects** removes the caller from the trip's participants list
+
+**queries**
+
+_getTripById(tripId: Trip, owner?: User) -> TripState | null
+
+- **effects** returns trip state by id; if `owner` provided, restricts to trips owned by that user
+
+_getTripsByUser(owner: User) -> TripState[]
+
+- **effects** returns trips where the user is either owner or a participant
+
+_getParticipantsInTrip(tripId: Trip) -> Participant[]
+
+- **effects** returns the participant list for the specified trip

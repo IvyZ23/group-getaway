@@ -1,34 +1,50 @@
 **concept** PasswordAuthentication
 
-**purpose** limit access to known users and limit acccess each user has
+**purpose** provide username/password based registration and authentication.
 
-**principle** after a user registers with a username and a password,
-they can authenticate with that same username and password
-and be treated each time as the same user
+**principle** After a user registers with a username and password, they can authenticate using the same credentials. Passwords are stored hashed with a salt. Helper functions to hash/verify passwords are internal.
 
 **state**
 
 a set of Users with
 
--   a username String
--   a password String
+- an id User
+- a username String
+- a passwordHash String (stored as salt:hash)
 
-**actions**
+**public actions**
 
-verifyPassword (password: String, stored: String)
+register(username: String, password: String): { user }
 
--   **effects** compares inputted password with actual password. Returns true if they match, false otherwise.
+- **requires** username does not already exist
+- **effects** creates a new user with a salted+hashed password and returns user id
 
-hashPassword (password: String)
+authenticate(username: String, password: String): { user }
 
--   **effects** hashes the password
+- **requires** username exists and password matches stored hash
+- **effects** returns the authenticated user's id
 
-register (username: String, password: String): (user: User)
+searchUsers(query: String, limit?: Number): { users }
 
--   **requires** username does not already exist
--   **effects** creates new user
+- **requires** none
+- **effects** performs a case-insensitive search of usernames and returns up to `limit` matches (default 10)
 
-authenticate (username: String, password: String): (user: User)
+**internal helpers (implementation detail)**
 
--   **requires** user with username and password to exists
--   **effects** returns that user
+hashPassword(password: String) -> String
+
+- **effects** returns salted hash string (salt:hash)
+
+verifyPassword(password: String, stored: String) -> Boolean
+
+- **effects** verifies a plaintext password against stored salted hash using timing-safe comparison
+
+**queries**
+
+_getUserByUsername(username: String) -> { user } | Empty
+
+- **effects** returns user id if username exists
+
+_getUserById(id: User) -> { id, username } | Empty
+
+- **effects** returns the user's id and username when found

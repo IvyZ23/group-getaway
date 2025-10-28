@@ -32,17 +32,17 @@ remove(expense: Expense)
 -   **requires** expense to exist
 -   **effects** deletes expense and contributions associated with it
 
-update(expense: Expense, cost: Number)
+updateCost(expense: Expense, newCost: Number)
 
--   **requires** expense to exist. cost to be positive
--   **effects** updates the cost of the item and covered field accordingly
+-   **requires** expense to exist. newCost must be positive
+-   **effects** updates the cost of the item and recalculates the `covered` flag based on current contributions
 
 addContribution(user: User, expense: Expense, amount: Number)
 
 -   **requires** expense to exist and amount to not be more than what is needed and amount to be positive
 -   **effects** if user already exists as contributor, merge the amounts, else add user as a new contributor
 
-updateContribution(user: User, new: Number, expense: Expense)
+updateContribution(user: User, newAmount: Number, expense: Expense)
 
--   **requires** user to exist as a contributor for expense and new amount to be positive
--   **effects** updates user's contribution amount
+-   **requires** user to exist as a contributor for `expense`. `newAmount` must be non-negative (zero allowed).
+-   **effects** updates user's contribution amount. The total contributions after the update must not exceed the expense cost. Updates the `covered` flag if status changes.
