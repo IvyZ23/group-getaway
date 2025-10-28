@@ -101,6 +101,19 @@ export default class PasswordAuthenticationConcept {
   }
 
   /**
+   * Internal query to get a user by id.
+   * Returns both id and username when found.
+   */
+  async _getUserById({
+    id,
+  }: {
+    id: User;
+  }): Promise<{ id: User; username: string } | Empty> {
+    const userDoc = await this.users.findOne({ _id: id });
+    return userDoc ? { id: userDoc._id, username: userDoc.username } : {};
+  }
+
+  /**
    * Search for users by (partial) username match.
    * Performs a case-insensitive search.
    */
