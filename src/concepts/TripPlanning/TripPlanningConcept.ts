@@ -296,16 +296,25 @@ export default class TripPlannerConcept {
   async _getTripById({
     tripId,
     owner,
+    user,
   }: {
     tripId: Trip;
     owner?: User;
+    user?: User; // optional requester for authorization checks
   }): Promise<TripState | null> {
-    console.log(tripId, owner);
-    const filter: Record<string, unknown> = { _id: tripId };
-    if (owner) filter.owner = owner;
-    // console.log(filter);
-    console.log(await this.trips.findOne(filter));
-    return await this.trips.findOne(filter);
+    // If an owner is provided, enforce owner match
+    if (owner) {
+      return await this.trips.findOne({ _id: tripId, owner });
+    }
+
+    // If a user (requester) is provided, only return the trip if the user is owner or participant
+    if (user) {
+      const trip = await this.trips.findOne({ _id: tripId, $or: [{ owner: user }, { "participants.user": user }] });
+      return trip ?? null;
+    }
+
+    // Fallback: return trip without authorization when no owner/user is provided
+    return await this.trips.findOne({ _id: tripId });
   }
 
   async _getTripsByUser({ owner }: { owner: User }): Promise<TripState[]> {

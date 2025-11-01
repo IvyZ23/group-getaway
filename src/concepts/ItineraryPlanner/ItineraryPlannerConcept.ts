@@ -296,11 +296,18 @@ export default class PlanItineraryConcept {
    * @effects returns the itinerary document for a given trip ID
    */
   async _getItineraryByTrip(
-    { trip }: { trip: Trip },
+    { trip, user }: { trip: Trip; user?: ID },
   ): Promise<{ itinerary?: ItineraryDoc; error?: string }> {
     const itinerary = await this.itineraries.findOne({ trip });
     if (!itinerary) {
       return { error: `No itinerary found for trip ${trip}.` };
+    }
+    if (user) {
+      const trips = this.db.collection("TripPlanner.trips");
+      const tripDoc = await trips.findOne({ _id: trip });
+      if (!tripDoc) return { error: `Trip ${trip} not found.` };
+      const isParticipant = tripDoc.owner === user || (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
+      if (!isParticipant) return { error: "Forbidden" };
     }
     return { itinerary };
   }
@@ -310,12 +317,22 @@ export default class PlanItineraryConcept {
    * @effects returns the itinerary document by its ID
    */
   async _getItineraryById(
-    { itinerary: itineraryId }: { itinerary: Itinerary },
+    { itinerary: itineraryId, user }: { itinerary: Itinerary; user?: ID },
   ): Promise<{ itinerary?: ItineraryDoc; error?: string }> {
     const itinerary = await this.itineraries.findOne({ _id: itineraryId });
     if (!itinerary) {
       return { error: `Itinerary ${itineraryId} not found.` };
     }
+
+    // If a requester `user` is provided, verify they are participant in the underlying trip
+    if (user) {
+      const trips = this.db.collection("TripPlanner.trips");
+      const trip = await trips.findOne({ _id: itinerary.trip });
+      if (!trip) return { error: `Trip ${itinerary.trip} not found.` };
+      const isParticipant = trip.owner === user || (trip.participants || []).some((p: { user: ID }) => p.user === user);
+      if (!isParticipant) return { error: "Forbidden" };
+    }
+
     return { itinerary };
   }
 
@@ -324,10 +341,19 @@ export default class PlanItineraryConcept {
    * @effects returns all events (pending, approved, rejected) associated with a given itinerary
    */
   async _getAllEventsForItinerary(
-    { itinerary: itineraryId }: { itinerary: Itinerary },
-  ): Promise<{ events: EventDoc[] }> {
-    const events = await this.events.find({ itineraryId: itineraryId })
-      .toArray();
+    { itinerary: itineraryId, user }: { itinerary: Itinerary; user?: ID },
+  ): Promise<{ events: EventDoc[] } | { error: string }> {
+    if (user) {
+      // verify membership on parent trip
+      const it = await this.itineraries.findOne({ _id: itineraryId });
+      if (!it) return { error: `Itinerary ${itineraryId} not found.` };
+      const trips = this.db.collection("TripPlanner.trips");
+      const tripDoc = await trips.findOne({ _id: it.trip });
+      if (!tripDoc) return { error: `Trip ${it.trip} not found.` };
+      const isParticipant = tripDoc.owner === user || (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
+      if (!isParticipant) return { error: "Forbidden" };
+    }
+    const events = await this.events.find({ itineraryId: itineraryId }).toArray();
     return { events };
   }
 
@@ -336,11 +362,18 @@ export default class PlanItineraryConcept {
    * @effects returns only the officially approved events for a given itinerary by fetching their full documents
    */
   async _getApprovedEventsForItinerary(
-    { itinerary: itineraryId }: { itinerary: Itinerary },
+    { itinerary: itineraryId, user }: { itinerary: Itinerary; user?: ID },
   ): Promise<{ events?: EventDoc[]; error?: string }> {
     const itinerary = await this.itineraries.findOne({ _id: itineraryId });
     if (!itinerary) {
       return { error: `Itinerary ${itineraryId} not found.` };
+    }
+    if (user) {
+      const trips = this.db.collection("TripPlanner.trips");
+      const tripDoc = await trips.findOne({ _id: itinerary.trip });
+      if (!tripDoc) return { error: `Trip ${itinerary.trip} not found.` };
+      const isParticipant = tripDoc.owner === user || (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
+      if (!isParticipant) return { error: "Forbidden" };
     }
     if (itinerary.events.length === 0) {
       return { events: [] }; // No approved events referenced

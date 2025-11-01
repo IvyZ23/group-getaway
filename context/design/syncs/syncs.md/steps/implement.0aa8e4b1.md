@@ -1,8 +1,8 @@
-[@concept-design-overview](../../background/concept-design-overview.md)
-
-[@concept-specifications](../../background/concept-specifications.md)
-
-[@implementing-concepts](../../background/implementing-concepts.md)
+---
+timestamp: 'Sat Nov 01 2025 12:51:27 GMT-0400 (Eastern Daylight Time)'
+parent: '[[../20251101_125127.9026119a.md]]'
+content_id: 0aa8e4b101cc1cb7e5a5f7cc60e2df5b487b3cffc9039b4ee171f9df3daeaa09
+---
 
 # implement: Cost Splitting
 
@@ -434,3 +434,5 @@ export default class CostSplittingConcept {
 
 
 ```
+
+Can you look over the concepts and their implementations and come up with syncs for this application?

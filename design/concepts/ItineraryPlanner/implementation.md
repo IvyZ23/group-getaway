@@ -6,64 +6,9 @@
 
 # implement: PlanItinerary
 
-**concept** PlanItinerary [Trip]
-
-**purpose** allow for easier itinerary crafting between multiple people
-
-**principle** an itinerary is created for a trip. Users can add and remove events from
-the intinerary. Added events await approval before being offically added. If it is not
-approved, it will not be added to the itinerary.
-
-**state**
-
-a set of Itineraries with
-
--   a trip Trip
--   a set of Events
--   a finalized Flag
-
-a set of Events with
-
--   a name String
--   a cost Number
--   a pending Flag
--   an approved Flag
-
-**action**
-
-create(trip:Trip): Itinerary
-
--   **requires** itinerary for trip to not already exist
--   **effects** creates new itinerary for trip
-
-addEvent(name: String, cost: Number, itinerary: Itinerary)
-
--   **effects** add new pending event to the itinerary
-
-updateEvent(event: Event, name: String, cost: Number, itinerary: Itinerary)
-
--   **requires** event in itinerary to exist
--   **effects** updates event
-
-approveEvent(event: Event, approved: Flag, itinerary: Itinerary)
-
--   **requires** event to exist in itinerary
--   **effects** sets approval flag for itinerary and update pending to false
-
-finalizeItinerary(intinerary: Itinerary, finalized: Flag)
-
--   **requires** itinerary to exist
--   **effects** sets itinerary finalized to given flag
-
-# response:
-
-# response:
-
 ```typescript
-// file: src/PlanItinerary/PlanItineraryConcept.ts
-
 import { Collection, Db } from "npm:mongodb";
-import { ID, Empty } from "@utils/types.ts";
+import { Empty, ID } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts"; // Assuming @utils/database.ts provides freshID() and getDb()
 
 // Declare collection prefix, use concept name
@@ -121,6 +66,22 @@ export default class PlanItineraryConcept {
     this.events = this.db.collection(PREFIX + "events");
   }
 
+  // Helper to check if an itinerary is found and not finalized
+  private async checkItineraryNotFinalized(
+    itineraryId: Itinerary,
+  ): Promise<{ itineraryDoc?: ItineraryDoc; error?: string }> {
+    const itineraryDoc = await this.itineraries.findOne({ _id: itineraryId });
+    if (!itineraryDoc) {
+      return { error: `Itinerary ${itineraryId} not found.` };
+    }
+    if (itineraryDoc.finalized) {
+      return {
+        error: `Itinerary ${itineraryId} is finalized and cannot be modified.`,
+      };
+    }
+    return { itineraryDoc };
+  }
+
   // --- Actions ---
 
   /**
@@ -128,7 +89,9 @@ export default class PlanItineraryConcept {
    * @requires itinerary for trip to not already exist
    * @effects creates new itinerary for trip with an empty set of approved events and not finalized
    */
-  async create({ trip }: { trip: Trip }): Promise<{ itinerary?: Itinerary; error?: string }> {
+  async create(
+    { trip }: { trip: Trip },
+  ): Promise<{ itinerary?: Itinerary; error?: string }> {
     // @requires Itinerary for trip must not already exist
     const existingItinerary = await this.itineraries.findOne({ trip });
     if (existingItinerary) {
@@ -150,17 +113,22 @@ export default class PlanItineraryConcept {
 
   /**
    * @action addEvent (name: String, cost: Number, itinerary: Itinerary): { event: Event }
+   * @requires itinerary to exist and not be finalized
    * @effects adds a new pending event to the concept's state, associated with the itinerary.
    *          The event is initially marked as pending and not approved, and is not yet "officially added"
    *          to the itinerary's list of approved events.
    */
   async addEvent(
-    { name, cost, itinerary: itineraryId }: { name: string; cost: number; itinerary: Itinerary },
+    { name, cost, itinerary: itineraryId }: {
+      name: string;
+      cost: number;
+      itinerary: Itinerary;
+    },
   ): Promise<{ event?: Event; error?: string }> {
-    // Check if itinerary exists
-    const itineraryExists = await this.itineraries.findOne({ _id: itineraryId });
-    if (!itineraryExists) {
-      return { error: `Itinerary ${itineraryId} not found.` };
+    // @requires itinerary to exist and not be finalized
+    const checkResult = await this.checkItineraryNotFinalized(itineraryId);
+    if (checkResult.error) {
+      return { error: checkResult.error };
     }
 
     const newEventId = freshID();
@@ -181,12 +149,23 @@ export default class PlanItineraryConcept {
 
   /**
    * @action updateEvent (event: Event, name: String, cost: Number, itinerary: Itinerary): Empty
-   * @requires event in itinerary to exist
+   * @requires event to exist in itinerary and itinerary not to be finalized
    * @effects updates the event's name and cost. Does not change its approval status.
    */
   async updateEvent(
-    { event: eventId, name, cost, itinerary: itineraryId }: { event: Event; name: string; cost: number; itinerary: Itinerary },
+    { event: eventId, name, cost, itinerary: itineraryId }: {
+      event: Event;
+      name: string;
+      cost: number;
+      itinerary: Itinerary;
+    },
   ): Promise<Empty | { error: string }> {
+    // @requires itinerary not to be finalized
+    const checkResult = await this.checkItineraryNotFinalized(itineraryId);
+    if (checkResult.error) {
+      return { error: checkResult.error };
+    }
+
     // @requires event in itinerary to exist
     const result = await this.events.updateOne(
       { _id: eventId, itineraryId: itineraryId },
@@ -194,7 +173,9 @@ export default class PlanItineraryConcept {
     );
 
     if (result.matchedCount === 0) {
-      return { error: `Event ${eventId} not found in itinerary ${itineraryId}.` };
+      return {
+        error: `Event ${eventId} not found in itinerary ${itineraryId}.`,
+      };
     }
     // @effects updates event's name and cost
     return {};
@@ -202,18 +183,33 @@ export default class PlanItineraryConcept {
 
   /**
    * @action approveEvent (event: Event, approved: Flag, itinerary: Itinerary): Empty
-   * @requires event to exist in itinerary
+   * @requires event to exist in itinerary and itinerary not to be finalized
    * @effects sets the event's approval flag and updates its pending status to false.
    *          If approved, the event's ID is added to the itinerary's official list of events.
    *          If disapproved, the event's ID is removed from the itinerary's official list of events.
    */
   async approveEvent(
-    { event: eventId, approved, itinerary: itineraryId }: { event: Event; approved: boolean; itinerary: Itinerary },
+    { event: eventId, approved, itinerary: itineraryId }: {
+      event: Event;
+      approved: boolean;
+      itinerary: Itinerary;
+    },
   ): Promise<Empty | { error: string }> {
+    // @requires itinerary not to be finalized
+    const checkResult = await this.checkItineraryNotFinalized(itineraryId);
+    if (checkResult.error) {
+      return { error: checkResult.error };
+    }
+
     // @requires event to exist in itinerary
-    const eventDoc = await this.events.findOne({ _id: eventId, itineraryId: itineraryId });
+    const eventDoc = await this.events.findOne({
+      _id: eventId,
+      itineraryId: itineraryId,
+    });
     if (!eventDoc) {
-      return { error: `Event ${eventId} not found in itinerary ${itineraryId}.` };
+      return {
+        error: `Event ${eventId} not found in itinerary ${itineraryId}.`,
+      };
     }
 
     // @effects sets approval flag for event and update pending to false
@@ -242,17 +238,31 @@ export default class PlanItineraryConcept {
 
   /**
    * @action removeEvent (event: Event, itinerary: Itinerary): Empty
-   * @requires event to exist in itinerary
+   * @requires event to exist in itinerary and itinerary not to be finalized
    * @effects removes the event record from the system and its ID from the itinerary's official list
    */
   async removeEvent(
-    { event: eventId, itinerary: itineraryId }: { event: Event; itinerary: Itinerary },
+    { event: eventId, itinerary: itineraryId }: {
+      event: Event;
+      itinerary: Itinerary;
+    },
   ): Promise<Empty | { error: string }> {
+    // @requires itinerary not to be finalized
+    const checkResult = await this.checkItineraryNotFinalized(itineraryId);
+    if (checkResult.error) {
+      return { error: checkResult.error };
+    }
+
     // @requires event to exist in itinerary
-    const result = await this.events.deleteOne({ _id: eventId, itineraryId: itineraryId });
+    const result = await this.events.deleteOne({
+      _id: eventId,
+      itineraryId: itineraryId,
+    });
 
     if (result.deletedCount === 0) {
-      return { error: `Event ${eventId} not found in itinerary ${itineraryId}.` };
+      return {
+        error: `Event ${eventId} not found in itinerary ${itineraryId}.`,
+      };
     }
 
     // @effects removes event record from the system and its ID from the itinerary's official list
@@ -270,7 +280,10 @@ export default class PlanItineraryConcept {
    * @effects sets itinerary's finalized flag to the given value
    */
   async finalizeItinerary(
-    { itinerary: itineraryId, finalized }: { itinerary: Itinerary; finalized: boolean },
+    { itinerary: itineraryId, finalized }: {
+      itinerary: Itinerary;
+      finalized: boolean;
+    },
   ): Promise<Empty | { error: string }> {
     // @requires itinerary to exist
     const result = await this.itineraries.updateOne(
@@ -291,7 +304,9 @@ export default class PlanItineraryConcept {
    * @query _getItineraryByTrip (trip: Trip): { itinerary: ItineraryDoc }
    * @effects returns the itinerary document for a given trip ID
    */
-  async _getItineraryByTrip({ trip }: { trip: Trip }): Promise<{ itinerary?: ItineraryDoc; error?: string }> {
+  async _getItineraryByTrip(
+    { trip }: { trip: Trip },
+  ): Promise<{ itinerary?: ItineraryDoc; error?: string }> {
     const itinerary = await this.itineraries.findOne({ trip });
     if (!itinerary) {
       return { error: `No itinerary found for trip ${trip}.` };
@@ -303,7 +318,9 @@ export default class PlanItineraryConcept {
    * @query _getItineraryById (itinerary: Itinerary): { itinerary: ItineraryDoc }
    * @effects returns the itinerary document by its ID
    */
-  async _getItineraryById({ itinerary: itineraryId }: { itinerary: Itinerary }): Promise<{ itinerary?: ItineraryDoc; error?: string }> {
+  async _getItineraryById(
+    { itinerary: itineraryId }: { itinerary: Itinerary },
+  ): Promise<{ itinerary?: ItineraryDoc; error?: string }> {
     const itinerary = await this.itineraries.findOne({ _id: itineraryId });
     if (!itinerary) {
       return { error: `Itinerary ${itineraryId} not found.` };
@@ -315,8 +332,11 @@ export default class PlanItineraryConcept {
    * @query _getAllEventsForItinerary (itinerary: Itinerary): { events: EventDoc[] }
    * @effects returns all events (pending, approved, rejected) associated with a given itinerary
    */
-  async _getAllEventsForItinerary({ itinerary: itineraryId }: { itinerary: Itinerary }): Promise<{ events: EventDoc[] }> {
-    const events = await this.events.find({ itineraryId: itineraryId }).toArray();
+  async _getAllEventsForItinerary(
+    { itinerary: itineraryId }: { itinerary: Itinerary },
+  ): Promise<{ events: EventDoc[] }> {
+    const events = await this.events.find({ itineraryId: itineraryId })
+      .toArray();
     return { events };
   }
 
@@ -324,17 +344,31 @@ export default class PlanItineraryConcept {
    * @query _getApprovedEventsForItinerary (itinerary: Itinerary): { events: EventDoc[] }
    * @effects returns only the officially approved events for a given itinerary by fetching their full documents
    */
-  async _getApprovedEventsForItinerary({ itinerary: itineraryId }: { itinerary: Itinerary }): Promise<{ events?: EventDoc[]; error?: string }> {
+  async _getApprovedEventsForItinerary(
+    { itinerary: itineraryId }: { itinerary: Itinerary },
+  ): Promise<{ events?: EventDoc[]; error?: string }> {
     const itinerary = await this.itineraries.findOne({ _id: itineraryId });
     if (!itinerary) {
       return { error: `Itinerary ${itineraryId} not found.` };
     }
     if (itinerary.events.length === 0) {
-        return { events: [] }; // No approved events referenced
+      return { events: [] }; // No approved events referenced
     }
     // Fetch the full event documents for the approved event IDs
-    const approvedEvents = await this.events.find({ _id: { $in: itinerary.events }, approved: true }).toArray();
+    const approvedEvents = await this.events.find({
+      _id: { $in: itinerary.events },
+      approved: true,
+    }).toArray();
     return { events: approvedEvents };
   }
+
+  async _getEventById(
+    { event }: { event: Event },
+  ): Promise<{ event?: EventDoc; error?: string }> {
+    const eventDoc = await this.events.findOne({ _id: event });
+    if (!eventDoc) return { error: `Event ${event} not found.` };
+    return { event: eventDoc };
+  }
 }
+
 ```

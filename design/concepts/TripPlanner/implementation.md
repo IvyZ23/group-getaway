@@ -5,82 +5,6 @@
 [@implementing-concepts](../../background/implementing-concepts.md)
 
 # implement: TripPlanner
-
-Can you modify the below typescript code so that it includes a new function that allows a user to remove themselves from a trip?
-
-**concept** TripPlanner [User]
-
-**purpose** keep details about a trip all in one place
-
-**principle** a user creates a trip and keeps track of the destination and date the trip will take place. They can add and remove participants to the trip and keep track of the budget for each participant. The creator of the trip can finalize the trip once no more changes are needed or delete the trip
-if it is no longer happening.
-
-**state**
-
-a set of Trips with
-
--   a name String
--   a finalized Flag
--   an owner User
--   a set of Pariticipants
--   a destination String
--   a dateRange DateRange
-
-a set of Participants with
-
--   a user User
--   a budget Number
-
-**action**
-
-create(user:User, destination: String, dataRange: DataRange, name: String): Trip
-
--   **requires** trip under user with same destination and date range not to already exist
--   **effects** creates new trip
-
-update(user: User, trip: Trip, destination: String, date: DateRange, name: String)
-
--   **requires** trip that belongs to user to exist
--   **effects** updates trip info
-
-finalize(user: User, trip: Trip, finalize: Flag)
-
--   **requires** trip that belongs to user to exist
--   **effects** updates finalized flag of trip
-
-delete(user: User, trip: Trip)
-
--   **requires** trip that belongs to user to exist
--   **effects** deletes trip
-
-addParticipant(user: User, trip: Trip)
-
--   **requires** user to not already exist in trip
--   **effects** adds user to trip
-
-updateParticipant(user: User, budget: Number, trip: Trip)
-
--   **requires** user to exist as a participant of trip
--   **effects** updates user info in trip
-
-removeParticipant(user: User, trip: Trip)
-
--   **requires** user to exist as a participant of trip
--   **effects** removes user from trip
-
-removeSelf (user:User, trip: Trip)
--   **requires** user to exist as a participant of trip
--   **effects** removes user from trip
-
-
-# response:
-
-To implement the `removeSelf` function, we'll add a new method to the `TripPlannerConcept` class. This method will find the specified trip and then remove the given `user` from its list of `participants`, with a specific check to prevent the owner from using this action (as they should use the `delete` action to remove the entire trip).
-
-Additionally, I've made a small adjustment to the `create` action to ensure the `owner` is automatically added as a participant when a trip is created, as is common for trip planning scenarios. I also added a check in `removeParticipant` to explicitly prevent an owner from removing themselves (or another owner) using that action, reinforcing that `removeSelf` is for non-owner participants.
-
-Here's the modified `TripPlannerConcept` class:
-
 ```typescript
 import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "@utils/types.ts";
@@ -130,16 +54,17 @@ export default class TripPlannerConcept {
    * @effects creates new trip, adding the owner as the initial participant.
    */
   async create({
-    owner,
-    destination,
     dateRange,
+    destination,
     name,
+    owner,
   }: {
     owner: User;
     destination: string;
     dateRange: DateRange;
     name: string;
   }): Promise<{ tripId: Trip } | { error: string }> {
+    // console.log(owner, destination, dateRange, name);
     const existingTrip = await this.trips.findOne({
       owner,
       destination,
@@ -276,7 +201,7 @@ export default class TripPlannerConcept {
   /**
    * updateParticipant(owner: User, budget: Number, tripId: Trip)
    *
-   * @requires user to exist as a participant of trip (and caller to be owner)
+   * @requires user to exist as a participant of trip (and caller to be owner or user themself)
    * @effects updates user info in trip
    */
   async updateParticipant({
@@ -324,7 +249,8 @@ export default class TripPlannerConcept {
     // Owners cannot be removed as a participant via this action, they must delete the trip.
     if (trip.owner === participantUser) {
       return {
-        error: "Owner cannot be removed as a participant via this action. Owners should delete the trip.",
+        error:
+          "Owner cannot be removed as a participant via this action. Owners should delete the trip.",
       };
     }
 
@@ -382,13 +308,20 @@ export default class TripPlannerConcept {
     tripId: Trip;
     owner?: User;
   }): Promise<TripState | null> {
+    console.log(tripId, owner);
     const filter: Record<string, unknown> = { _id: tripId };
     if (owner) filter.owner = owner;
+    // console.log(filter);
+    console.log(await this.trips.findOne(filter));
     return await this.trips.findOne(filter);
   }
 
   async _getTripsByUser({ owner }: { owner: User }): Promise<TripState[]> {
-    return await this.trips.find({ owner }).toArray();
+    // Return trips where the user is either the owner or a participant.
+    // This supports client views that show both owned and invited trips.
+    return await this.trips
+      .find({ $or: [{ owner }, { "participants.user": owner }] })
+      .toArray();
   }
 
   async _getParticipantsInTrip({
@@ -400,4 +333,5 @@ export default class TripPlannerConcept {
     return trip ? trip.participants : [];
   }
 }
+
 ```

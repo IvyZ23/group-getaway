@@ -30,6 +30,11 @@ const REQUESTING_ALLOWED_DOMAIN = Deno.env.get("REQUESTING_ALLOWED_DOMAIN") ??
 const REQUESTING_SAVE_RESPONSES = Deno.env.get("REQUESTING_SAVE_RESPONSES") ??
   true;
 
+// Session configuration
+const SESSION_COOKIE_NAME = Deno.env.get("SESSION_COOKIE_NAME") ?? "GG_SESSION";
+const SESSION_TTL_SECONDS = parseInt(Deno.env.get("SESSION_TTL_SECONDS") ?? String(60 * 60 * 24 * 7), 10); // default 7 days
+const SESSION_SECURE = (Deno.env.get("SESSION_SECURE") ?? "false") === "true";
+
 const PREFIX = "Requesting" + ".";
 
 // --- Type Definitions ---
@@ -199,6 +204,27 @@ export function startRequestingServer(
     }),
   );
 
+  // Cookie parser helper
+  function parseCookies(cookieHeader?: string | null): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!cookieHeader) return out;
+    for (const pair of cookieHeader.split(";")) {
+      const idx = pair.indexOf("=");
+      if (idx === -1) continue;
+      const name = pair.slice(0, idx).trim();
+      const val = pair.slice(idx + 1).trim();
+      out[name] = val;
+    }
+    return out;
+  }
+
+  // Helper to build Set-Cookie header value
+  function buildSessionCookie(sessionId: string, maxAgeSeconds: number) {
+    const parts = [`${SESSION_COOKIE_NAME}=${sessionId}`, `Path=/`, `Max-Age=${maxAgeSeconds}`, `HttpOnly`, `SameSite=Lax`];
+    if (SESSION_SECURE) parts.push("Secure");
+    return parts.join("; ");
+  }
+
   /**
    * PASSTHROUGH ROUTES
    *
@@ -210,6 +236,44 @@ export function startRequestingServer(
 
   console.log("\nRegistering concept passthrough routes.");
   let unverified = false;
+  // --- Authentication routes ---
+  // Login: authenticate using PasswordAuth, create a server-side session and set cookie
+  app.post(`${REQUESTING_BASE_URL}/auth/login`, async (c) => {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const auth = await concepts.PasswordAuth.authenticate(body) as { user?: ID; error?: string };
+      if (auth.error || !auth.user) {
+        return c.json({ error: 'Invalid credentials.' }, 401);
+      }
+      const user = auth.user as ID;
+      // create session
+      const sessionRes = await concepts.Sessions.create({ user, ttlSeconds: SESSION_TTL_SECONDS }) as { session: string };
+      const sessionId = sessionRes.session;
+      const cookie = buildSessionCookie(sessionId, SESSION_TTL_SECONDS);
+      c.header('Set-Cookie', cookie);
+      return c.json({ user });
+    } catch (e) {
+      console.error('Login error', e);
+      return c.json({ error: 'Internal' }, 500);
+    }
+  });
+
+  // Logout: destroy session and clear cookie
+  app.post(`${REQUESTING_BASE_URL}/auth/logout`, async (c) => {
+    try {
+  const cookies = parseCookies(c.req.header('cookie'));
+      const sessionId = cookies[SESSION_COOKIE_NAME];
+      if (sessionId) {
+        await concepts.Sessions.destroy({ session: sessionId }).catch(() => {});
+      }
+      // clear cookie
+      c.header('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+      return c.json({ ok: true });
+    } catch (e) {
+      console.error('Logout error', e);
+      return c.json({ error: 'Internal' }, 500);
+    }
+  });
   for (const [conceptName, concept] of Object.entries(instances)) {
     const methods = Object.getOwnPropertyNames(
       Object.getPrototypeOf(concept),
@@ -225,17 +289,38 @@ export function startRequestingServer(
       const msg = included
         ? `  -> ${route}`
         : `WARNING - UNVERIFIED ROUTE: ${route}`;
-
-      app.post(route, async (c) => {
-        try {
-          const body = await c.req.json().catch(() => ({})); // Handle empty body
-          const result = await concept[method](body);
-          return c.json(result);
-        } catch (e) {
-          console.error(`Error in ${conceptName}.${method}:`, e);
-          return c.json({ error: "An internal server error occurred." }, 500);
-        }
-      });
+        app.post(route, async (c) => {
+          try {
+            const body = await c.req.json().catch(() => ({})); // Handle empty body
+            // attach verified user from session (if present)
+            const cookies = parseCookies(c.req.header('cookie'));
+            const sessionId = cookies[SESSION_COOKIE_NAME];
+            if (sessionId && concepts.Sessions) {
+              const val = await concepts.Sessions.validate({ session: sessionId }) as { user?: ID } | Record<string, never>;
+              if (val && (val as { user?: ID }).user) {
+                // merge user into body so concept methods that accept optional `user` see it
+                (body as Record<string, unknown>).user = (val as { user?: ID }).user;
+              }
+            }
+            const result = await concept[method](body);
+            // If this was a direct authenticate call, create a session and set cookie
+            try {
+              if (conceptName === 'PasswordAuth' && method === 'authenticate' && result && (result as { user?: ID }).user) {
+                const userId = (result as { user?: ID }).user as ID;
+                const sessionRes = await concepts.Sessions.create({ user: userId, ttlSeconds: SESSION_TTL_SECONDS }) as { session: string };
+                const cookie = buildSessionCookie(sessionRes.session, SESSION_TTL_SECONDS);
+                c.header('Set-Cookie', cookie);
+              }
+            } catch (e) {
+              // Ignore session creation errors to avoid breaking auth flow
+              console.error('Session create after auth failed', e);
+            }
+            return c.json(result);
+          } catch (e) {
+            console.error(`Error in ${conceptName}.${method}:`, e);
+            return c.json({ error: "An internal server error occurred." }, 500);
+          }
+        });
       console.log(msg);
     }
   }
@@ -271,6 +356,17 @@ export function startRequestingServer(
         ...body,
         path: actionPath,
       };
+
+      // Attach verified user (if any) from session cookie so downstream concepts
+      // can perform authorization checks using a server-verified identity.
+      const cookies = parseCookies(c.req.header('cookie'));
+      const sessionId = cookies[SESSION_COOKIE_NAME];
+      if (sessionId && concepts.Sessions) {
+        const val = await concepts.Sessions.validate({ session: sessionId }) as { user?: ID } | Record<string, never>;
+        if (val && (val as { user?: ID }).user) {
+          (inputs as Record<string, unknown>).user = (val as { user?: ID }).user;
+        }
+      }
 
       console.log(`[Requesting] Received request for path: ${inputs.path}`);
 

@@ -5,40 +5,6 @@
 [@implementing-concepts](../../background/implementing-concepts.md)
 
 # implement: UserAuthentication
-
-**concept** PasswordAuthentication
-
-**purpose** limit access to known users and limit acccess each user has
-
-**principle** after a user registers with a username and a password,
-they can authenticate with that same username and password
-and be treated each time as the same user
-
-**state**
-
-a set of Users with
-
--   a username String
--   a password String
-
-**actions**
-
-register (username: String, password: String): (user: User)
-
--   **requires** username does not already exist
--   **effects** creates new user
-
-authenticate (username: String, password: String): (user: User)
-
--   **requires** user with username and password to exists
--   **effects** returns that user
-
-User passwords should be hashed before being stored away. Can you use the node:crypto module has a function to do this? https://docs.deno.com/api/node/crypto/~/hash
-
-# response:
-
-# response:
-
 ```typescript
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
@@ -140,6 +106,48 @@ export default class PasswordAuthenticationConcept {
   }): Promise<{ user: User } | Empty> {
     const userDoc = await this.users.findOne({ username });
     return userDoc ? { user: userDoc._id } : {};
+  }
+
+  /**
+   * Internal query to get a user by id.
+   * Returns both id and username when found.
+   */
+  async _getUserById({
+    id,
+  }: {
+    id: User;
+  }): Promise<{ id: User; username: string } | Empty> {
+    const userDoc = await this.users.findOne({ _id: id });
+    return userDoc ? { id: userDoc._id, username: userDoc.username } : {};
+  }
+
+  /**
+   * Search for users by (partial) username match.
+   * Performs a case-insensitive search.
+   */
+  async searchUsers({
+    query,
+    limit = 10,
+  }: {
+    query: string;
+    limit?: number;
+  }): Promise<{ users: { id: User; username: string }[] }> {
+    // Build a case-insensitive regex pattern
+    const regex = new RegExp(query, "i");
+
+    const results = await this.users
+      .find({ username: { $regex: regex } })
+      .limit(limit)
+      .project({ _id: 1, username: 1 })
+      .toArray();
+
+    // Format for clean API response
+    const users = results.map((u) => ({
+      id: u._id,
+      username: u.username,
+    }));
+
+    return { users };
   }
 }
 
