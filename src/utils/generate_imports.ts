@@ -108,6 +108,12 @@ export const [db, client] = await ${dbImportFunc}();
     )
     .join("\n");
 
+  // Also export a plural alias for each concept (e.g. `Session` -> `Sessions`) to
+  // support existing code that expects pluralized concept names.
+  const pluralAliases = concepts
+    .map((c) => `export const ${c.name}s = ${c.name};`)
+    .join("\n");
+
   return [
     header,
     dbImport,
@@ -116,6 +122,7 @@ export const [db, client] = await ${dbImportFunc}();
     conceptTypeExports,
     dbInitialization,
     instantiations,
+    pluralAliases,
     "", // trailing newline
   ].join("\n");
 }
@@ -148,7 +155,11 @@ async function discoverSyncs(baseDir: string): Promise<SyncInfo[]> {
         .replace(/\.sync\.ts$/, "")
         .replaceAll(path.SEPARATOR, ".");
 
-      const importAlias = `sync_${prefix.replaceAll(".", "_")}`;
+      // Create a safe import alias: replace dots with underscores and
+      // sanitize any non-alphanumeric characters (like hyphens) to underscores
+      const importAlias = `sync_${
+        prefix.replaceAll(".", "_").replace(/[^a-zA-Z0-9_]/g, "_")
+      }`;
       // Ensure import path uses forward slashes for cross-platform compatibility
       const importPath = `./${relativePath.replaceAll(path.SEPARATOR, "/")}`;
 

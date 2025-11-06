@@ -1,57 +1,52 @@
 import { Collection, Db } from "npm:mongodb";
 import { freshID } from "@utils/database.ts";
-import { ID, Empty } from "@utils/types.ts";
+import { ID } from "@utils/types.ts";
 
-const PREFIX = "Sessions" + ".";
-
-type Session = ID;
-type User = ID;
+const PREFIX = "Sessions.";
+type SessionID = ID;
 
 interface SessionDoc {
-  _id: Session;
-  user: User;
-  createdAt: Date;
-  expiresAt: Date;
+  _id: SessionID;
+  user: ID;
+  expiresAt?: Date;
 }
 
 export default class SessionConcept {
   private sessions: Collection<SessionDoc>;
+
   constructor(private readonly db: Db) {
     this.sessions = this.db.collection(PREFIX + "sessions");
   }
 
   /**
-   * create ({ user }): { session }
-   * creates a server-side session tied to a user id
+   * create ({ user, ttlSeconds }) => { session }
    */
-  async create({ user, ttlSeconds = 60 * 60 * 24 * 7 }: { user: User; ttlSeconds?: number }): Promise<{ session: Session }> {
-    const id = freshID() as Session;
-    const now = new Date();
-    const doc: SessionDoc = { _id: id, user, createdAt: now, expiresAt: new Date(now.getTime() + ttlSeconds * 1000) };
+  async create({ user, ttlSeconds }: { user: ID; ttlSeconds?: number }) {
+    const session = freshID() as SessionID;
+    const doc: SessionDoc = { _id: session, user };
+    if (ttlSeconds) doc.expiresAt = new Date(Date.now() + ttlSeconds * 1000);
     await this.sessions.insertOne(doc);
-    return { session: id };
+    return { session };
   }
 
   /**
-   * validate ({ session }): { user } | {}
-   * returns the user id if session exists and is not expired
+   * validate ({ session }) => { user } | {}
    */
-  async validate({ session }: { session: Session }): Promise<{ user?: User } | Empty> {
+  async validate({ session }: { session: SessionID }) {
     const doc = await this.sessions.findOne({ _id: session });
     if (!doc) return {};
-    if (doc.expiresAt.getTime() < Date.now()) {
-      // expired: remove it
-      await this.sessions.deleteOne({ _id: session });
+    if (doc.expiresAt && new Date(doc.expiresAt) < new Date()) {
+      await this.sessions.deleteOne({ _id: session }).catch(() => {});
       return {};
     }
     return { user: doc.user };
   }
 
   /**
-   * destroy ({ session }): Empty
+   * destroy ({ session }) => { ok: true }
    */
-  async destroy({ session }: { session: Session }): Promise<Empty> {
-    await this.sessions.deleteOne({ _id: session });
-    return {} as Empty;
+  async destroy({ session }: { session: SessionID }) {
+    await this.sessions.deleteOne({ _id: session }).catch(() => {});
+    return { ok: true };
   }
 }

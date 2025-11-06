@@ -1,5 +1,5 @@
 import { Hono } from "jsr:@hono/hono";
-import { cors } from "jsr:@hono/hono/cors";
+import { cors as _cors } from "jsr:@hono/hono/cors";
 import { Collection, Db } from "npm:mongodb";
 import { freshID } from "@utils/database.ts";
 import { ID } from "@utils/types.ts";
@@ -32,7 +32,10 @@ const REQUESTING_SAVE_RESPONSES = Deno.env.get("REQUESTING_SAVE_RESPONSES") ??
 
 // Session configuration
 const SESSION_COOKIE_NAME = Deno.env.get("SESSION_COOKIE_NAME") ?? "GG_SESSION";
-const SESSION_TTL_SECONDS = parseInt(Deno.env.get("SESSION_TTL_SECONDS") ?? String(60 * 60 * 24 * 7), 10); // default 7 days
+const SESSION_TTL_SECONDS = parseInt(
+  Deno.env.get("SESSION_TTL_SECONDS") ?? String(60 * 60 * 24 * 7),
+  10,
+); // default 7 days
 const SESSION_SECURE = (Deno.env.get("SESSION_SECURE") ?? "false") === "true";
 
 const PREFIX = "Requesting" + ".";
@@ -197,12 +200,29 @@ export function startRequestingServer(
     throw new Error("Requesting concept missing or broken.");
   }
   const app = new Hono();
-  app.use(
-    "/*",
-    cors({
-      origin: REQUESTING_ALLOWED_DOMAIN,
-    }),
-  );
+  // CORS middleware: echo the request origin when appropriate and enable
+  // credentials so cookies (HttpOnly session cookie) will be sent by browsers
+  // when `withCredentials: true` / `credentials: 'include'` is used.
+  app.use("/*", async (c, next) => {
+    const origin = c.req.header("origin") ?? "";
+    // If the configured allowed domain is '*', echo the request origin
+    // (browsers require a specific origin when credentials are used).
+    const allowOrigin = REQUESTING_ALLOWED_DOMAIN === "*" && origin
+      ? origin
+      : REQUESTING_ALLOWED_DOMAIN;
+
+    c.header("Access-Control-Allow-Origin", allowOrigin);
+    c.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    // Must allow credentials so the browser will send cookies
+    c.header("Access-Control-Allow-Credentials", "true");
+
+    if (c.req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: c.res.headers });
+    }
+
+    return await next();
+  });
 
   // Cookie parser helper
   function parseCookies(cookieHeader?: string | null): Record<string, string> {
@@ -220,7 +240,13 @@ export function startRequestingServer(
 
   // Helper to build Set-Cookie header value
   function buildSessionCookie(sessionId: string, maxAgeSeconds: number) {
-    const parts = [`${SESSION_COOKIE_NAME}=${sessionId}`, `Path=/`, `Max-Age=${maxAgeSeconds}`, `HttpOnly`, `SameSite=Lax`];
+    const parts = [
+      `${SESSION_COOKIE_NAME}=${sessionId}`,
+      `Path=/`,
+      `Max-Age=${maxAgeSeconds}`,
+      `HttpOnly`,
+      `SameSite=Lax`,
+    ];
     if (SESSION_SECURE) parts.push("Secure");
     return parts.join("; ");
   }
@@ -241,40 +267,106 @@ export function startRequestingServer(
   app.post(`${REQUESTING_BASE_URL}/auth/login`, async (c) => {
     try {
       const body = await c.req.json().catch(() => ({}));
-      const auth = await concepts.PasswordAuth.authenticate(body) as { user?: ID; error?: string };
+      const auth = await concepts.PasswordAuth.authenticate(body) as {
+        user?: ID;
+        error?: string;
+      };
       if (auth.error || !auth.user) {
-        return c.json({ error: 'Invalid credentials.' }, 401);
+        return c.json({ error: "Invalid credentials." }, 401);
       }
       const user = auth.user as ID;
       // create session
-      const sessionRes = await concepts.Sessions.create({ user, ttlSeconds: SESSION_TTL_SECONDS }) as { session: string };
+      const sessionRes = await concepts.Sessions.create({
+        user,
+        ttlSeconds: SESSION_TTL_SECONDS,
+      }) as { session: string };
       const sessionId = sessionRes.session;
       const cookie = buildSessionCookie(sessionId, SESSION_TTL_SECONDS);
-      c.header('Set-Cookie', cookie);
+      c.header("Set-Cookie", cookie);
       return c.json({ user });
     } catch (e) {
-      console.error('Login error', e);
-      return c.json({ error: 'Internal' }, 500);
+      console.error("Login error", e);
+      return c.json({ error: "Internal" }, 500);
     }
   });
 
   // Logout: destroy session and clear cookie
   app.post(`${REQUESTING_BASE_URL}/auth/logout`, async (c) => {
     try {
-  const cookies = parseCookies(c.req.header('cookie'));
+      const cookies = parseCookies(c.req.header("cookie"));
       const sessionId = cookies[SESSION_COOKIE_NAME];
       if (sessionId) {
         await concepts.Sessions.destroy({ session: sessionId }).catch(() => {});
       }
       // clear cookie
-      c.header('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+      c.header(
+        "Set-Cookie",
+        `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`,
+      );
       return c.json({ ok: true });
     } catch (e) {
-      console.error('Logout error', e);
-      return c.json({ error: 'Internal' }, 500);
+      console.error("Logout error", e);
+      return c.json({ error: "Internal" }, 500);
     }
   });
+
+  // Me: return the current authenticated user (if any)
+  app.post(`${REQUESTING_BASE_URL}/auth/me`, async (c) => {
+    try {
+      const cookies = parseCookies(c.req.header("cookie"));
+      const sessionId = cookies[SESSION_COOKIE_NAME];
+      if (!sessionId || !concepts.Sessions) {
+        return c.json({ error: "Not authenticated" }, 401);
+      }
+      const val = await concepts.Sessions.validate({ session: sessionId }) as {
+        user?: ID;
+      } | Record<string, never>;
+      if (val && (val as { user?: ID }).user) {
+        return c.json({ user: (val as { user?: ID }).user });
+      }
+      return c.json({ error: "Not authenticated" }, 401);
+    } catch (e) {
+      console.error("Me error", e);
+      return c.json({ error: "Internal" }, 500);
+    }
+  });
+
+  // Direct convenience endpoint for TripPlanning._getTripsByUser to simplify
+  // request/response path during development. This bypasses the sync engine
+  // and calls the query directly, attaching a verified session user as
+  // `owner` if present.
+  app.post(`${REQUESTING_BASE_URL}/TripPlanning/_getTripsByUser`, async (c) => {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const cookies = parseCookies(c.req.header("cookie"));
+      const sessionId = cookies[SESSION_COOKIE_NAME];
+      if (sessionId && concepts.Sessions) {
+        const val = await concepts.Sessions.validate({ session: sessionId }) as
+          | { user?: ID }
+          | Record<string, never>;
+        if (val && (val as { user?: ID }).user) {
+          if (!("owner" in body)) {
+            (body as Record<string, unknown>).owner =
+              (val as { user?: ID }).user;
+          }
+        }
+      }
+      const owner = (body as Record<string, unknown>).owner;
+      const trips = await concepts.TripPlanning._getTripsByUser({ owner });
+      return c.json(trips);
+    } catch (e) {
+      console.error("TripPlanning fetch error", e);
+      return c.json({ error: "Internal" }, 500);
+    }
+  });
+  // Avoid registering duplicate concept instances (the generated `@concepts`
+  // barrel may export both singular and plural aliases which point to the
+  // same underlying instance). Track seen instances by reference so we only
+  // register each concept once.
+  const seen = new Set<object>();
   for (const [conceptName, concept] of Object.entries(instances)) {
+    if (seen.has(concept)) continue;
+    seen.add(concept as object);
     const methods = Object.getOwnPropertyNames(
       Object.getPrototypeOf(concept),
     )
@@ -289,38 +381,50 @@ export function startRequestingServer(
       const msg = included
         ? `  -> ${route}`
         : `WARNING - UNVERIFIED ROUTE: ${route}`;
-        app.post(route, async (c) => {
-          try {
-            const body = await c.req.json().catch(() => ({})); // Handle empty body
-            // attach verified user from session (if present)
-            const cookies = parseCookies(c.req.header('cookie'));
-            const sessionId = cookies[SESSION_COOKIE_NAME];
-            if (sessionId && concepts.Sessions) {
-              const val = await concepts.Sessions.validate({ session: sessionId }) as { user?: ID } | Record<string, never>;
-              if (val && (val as { user?: ID }).user) {
-                // merge user into body so concept methods that accept optional `user` see it
-                (body as Record<string, unknown>).user = (val as { user?: ID }).user;
-              }
+      app.post(route, async (c) => {
+        try {
+          const body = await c.req.json().catch(() => ({})); // Handle empty body
+          // attach verified user from session (if present)
+          const cookies = parseCookies(c.req.header("cookie"));
+          const sessionId = cookies[SESSION_COOKIE_NAME];
+          if (sessionId && concepts.Sessions) {
+            const val = await concepts.Sessions.validate({
+              session: sessionId,
+            }) as { user?: ID } | Record<string, never>;
+            if (val && (val as { user?: ID }).user) {
+              // merge user into body so concept methods that accept optional `user` see it
+              (body as Record<string, unknown>).user =
+                (val as { user?: ID }).user;
             }
-            const result = await concept[method](body);
-            // If this was a direct authenticate call, create a session and set cookie
-            try {
-              if (conceptName === 'PasswordAuth' && method === 'authenticate' && result && (result as { user?: ID }).user) {
-                const userId = (result as { user?: ID }).user as ID;
-                const sessionRes = await concepts.Sessions.create({ user: userId, ttlSeconds: SESSION_TTL_SECONDS }) as { session: string };
-                const cookie = buildSessionCookie(sessionRes.session, SESSION_TTL_SECONDS);
-                c.header('Set-Cookie', cookie);
-              }
-            } catch (e) {
-              // Ignore session creation errors to avoid breaking auth flow
-              console.error('Session create after auth failed', e);
-            }
-            return c.json(result);
-          } catch (e) {
-            console.error(`Error in ${conceptName}.${method}:`, e);
-            return c.json({ error: "An internal server error occurred." }, 500);
           }
-        });
+          const result = await concept[method](body);
+          // If this was a direct authenticate call, create a session and set cookie
+          try {
+            if (
+              conceptName === "PasswordAuth" && method === "authenticate" &&
+              result && (result as { user?: ID }).user
+            ) {
+              const userId = (result as { user?: ID }).user as ID;
+              const sessionRes = await concepts.Sessions.create({
+                user: userId,
+                ttlSeconds: SESSION_TTL_SECONDS,
+              }) as { session: string };
+              const cookie = buildSessionCookie(
+                sessionRes.session,
+                SESSION_TTL_SECONDS,
+              );
+              c.header("Set-Cookie", cookie);
+            }
+          } catch (e) {
+            // Ignore session creation errors to avoid breaking auth flow
+            console.error("Session create after auth failed", e);
+          }
+          return c.json(result);
+        } catch (e) {
+          console.error(`Error in ${conceptName}.${method}:`, e);
+          return c.json({ error: "An internal server error occurred." }, 500);
+        }
+      });
       console.log(msg);
     }
   }
@@ -359,12 +463,15 @@ export function startRequestingServer(
 
       // Attach verified user (if any) from session cookie so downstream concepts
       // can perform authorization checks using a server-verified identity.
-      const cookies = parseCookies(c.req.header('cookie'));
+      const cookies = parseCookies(c.req.header("cookie"));
       const sessionId = cookies[SESSION_COOKIE_NAME];
       if (sessionId && concepts.Sessions) {
-        const val = await concepts.Sessions.validate({ session: sessionId }) as { user?: ID } | Record<string, never>;
+        const val = await concepts.Sessions.validate({ session: sessionId }) as
+          | { user?: ID }
+          | Record<string, never>;
         if (val && (val as { user?: ID }).user) {
-          (inputs as Record<string, unknown>).user = (val as { user?: ID }).user;
+          (inputs as Record<string, unknown>).user =
+            (val as { user?: ID }).user;
         }
       }
 
