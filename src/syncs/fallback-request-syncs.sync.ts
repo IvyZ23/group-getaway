@@ -59,6 +59,270 @@ export const CostSplitting_GetExpensesByItem: Sync = (
   then: actions([Requesting.respond, { request, expenses }]),
 });
 
+// Map POST /CostSplitting/create -> CostSplitting.create
+export const CostSplitting_CreateRequest: Sync = (
+  { request, item, cost, expenseId, error },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/CostSplitting/create", item, cost },
+    { request },
+  ]),
+  then: (() => {
+    const action: ActionList = [
+      CostSplitting.create as unknown as InstrumentedAction,
+      { item, cost },
+      { expenseId, error },
+    ];
+    return actions(action);
+  })(),
+});
+
+export const CostSplitting_CreateResponse: Sync = ({ request, expenseId }) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/create" }, { request }],
+    [CostSplitting.create as unknown as InstrumentedAction, {}, { expenseId }],
+  ),
+  then: actions([Requesting.respond, { request, expenseId }]),
+});
+
+export const CostSplitting_CreateResponseError: Sync = (
+  { request, error },
+) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/create" }, { request }],
+    [CostSplitting.create as unknown as InstrumentedAction, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
+});
+
+// Map POST /CostSplitting/remove -> CostSplitting.remove
+export const CostSplitting_RemoveRequest: Sync = (
+  { request, expenseId, error },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/CostSplitting/remove", expenseId },
+    { request },
+  ]),
+  then: (() => {
+    const action: ActionList = [
+      CostSplitting.remove as unknown as InstrumentedAction,
+      { expenseId },
+      { error },
+    ];
+    return actions(action);
+  })(),
+});
+
+export const CostSplitting_RemoveResponse: Sync = ({ request }) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/remove" }, { request }],
+    [CostSplitting.remove as unknown as InstrumentedAction, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const CostSplitting_RemoveResponseError: Sync = (
+  { request, error },
+) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/remove" }, { request }],
+    [CostSplitting.remove as unknown as InstrumentedAction, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
+});
+
+// Map POST /CostSplitting/updateCost -> CostSplitting.updateCost
+export const CostSplitting_UpdateCostRequest: Sync = (
+  { request, expenseId, newCost, error },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/CostSplitting/updateCost", expenseId, newCost },
+    { request },
+  ]),
+  then: (() => {
+    const action: ActionList = [
+      CostSplitting.updateCost as unknown as InstrumentedAction,
+      { expenseId, newCost },
+      { error },
+    ];
+    return actions(action);
+  })(),
+});
+
+export const CostSplitting_UpdateCostResponse: Sync = ({ request }) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/updateCost" }, { request }],
+    [CostSplitting.updateCost as unknown as InstrumentedAction, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const CostSplitting_UpdateCostResponseError: Sync = (
+  { request, error },
+) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/updateCost" }, { request }],
+    [CostSplitting.updateCost as unknown as InstrumentedAction, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
+});
+
+// Map POST /CostSplitting/addContribution -> CostSplitting.addContribution
+export const CostSplitting_AddContributionRequest: Sync = (
+  { request, userId, expenseId, amount, error },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/CostSplitting/addContribution", userId, expenseId, amount },
+    { request },
+  ]),
+  then: (() => {
+    const action: ActionList = [
+      CostSplitting.addContribution as unknown as InstrumentedAction,
+      { userId, expenseId, amount },
+      { error },
+    ];
+    return actions(action);
+  })(),
+});
+
+export const CostSplitting_AddContributionResponse: Sync = ({ request }) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/addContribution" }, {
+      request,
+    }],
+    [CostSplitting.addContribution as unknown as InstrumentedAction, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const CostSplitting_AddContributionResponseError: Sync = (
+  { request, error },
+) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/addContribution" }, {
+      request,
+    }],
+    [CostSplitting.addContribution as unknown as InstrumentedAction, {}, {
+      error,
+    }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
+});
+
+// Map POST /CostSplitting/updateContribution -> CostSplitting.updateContribution
+export const CostSplitting_UpdateContributionRequest: Sync = (
+  { request, userId, newAmount, expenseId, error },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/CostSplitting/updateContribution", userId, newAmount, expenseId },
+    { request },
+  ]),
+  then: (() => {
+    const action: ActionList = [
+      CostSplitting.updateContribution as unknown as InstrumentedAction,
+      { userId, newAmount, expenseId },
+      { error },
+    ];
+    return actions(action);
+  })(),
+});
+
+export const CostSplitting_UpdateContributionResponse: Sync = (
+  { request },
+) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/updateContribution" }, {
+      request,
+    }],
+    [CostSplitting.updateContribution as unknown as InstrumentedAction, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const CostSplitting_UpdateContributionResponseError: Sync = (
+  { request, error },
+) => ({
+  when: actions(
+    [Requesting.request, { path: "/CostSplitting/updateContribution" }, {
+      request,
+    }],
+    [CostSplitting.updateContribution as unknown as InstrumentedAction, {}, {
+      error,
+    }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
+});
+
+// Query mappings for expense retrievals
+export const CostSplitting_GetExpense: Sync = (
+  { request, expenseId, expense },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/CostSplitting/_getExpense", expenseId },
+    { request },
+  ]),
+  where: async (frames) => {
+    return await frames.query(
+      async (
+        { expenseId },
+      ) => [{ expense: await CostSplitting._getExpense({ expenseId }) }],
+      { expenseId },
+      { expense },
+    );
+  },
+  then: actions([Requesting.respond, { request, expense }]),
+});
+
+export const CostSplitting_GetTotalContributions: Sync = (
+  { request, expenseId, total },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/CostSplitting/_getTotalContributions", expenseId },
+    { request },
+  ]),
+  where: async (frames) => {
+    return await frames.query(
+      async (
+        { expenseId },
+      ) => [{
+        total: await CostSplitting._getTotalContributions({ expenseId }),
+      }],
+      { expenseId },
+      { total },
+    );
+  },
+  then: actions([Requesting.respond, { request, total }]),
+});
+
+export const CostSplitting_GetUserContribution: Sync = (
+  { request, userId, expenseId, amount },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/CostSplitting/_getUserContribution", userId, expenseId },
+    { request },
+  ]),
+  where: async (frames) => {
+    return await frames.query(
+      async (
+        { userId, expenseId },
+      ) => [{
+        amount: await CostSplitting._getUserContribution({ userId, expenseId }),
+      }],
+      { userId, expenseId },
+      { amount },
+    );
+  },
+  then: actions([Requesting.respond, { request, amount }]),
+});
+
 // Direct create mapping for Polling.create so frontend calls to /Polling/create
 // are handled and the Requesting request is always responded to.
 export const Polling_CreateRequest: Sync = ({ request, user, name, poll }) => ({
@@ -167,6 +431,41 @@ export const Polling_AddOptionResponseError: Sync = ({ request, error }) => ({
   then: actions([Requesting.respond, { request, error }]),
 });
 
+// Map POST /Polling/addUser -> Polling.addUser
+export const Polling_AddUserRequest: Sync = (
+  { request, actingUser, poll, userToAdd, error },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/Polling/addUser", actingUser, poll, userToAdd },
+    { request },
+  ]),
+  then: (() => {
+    const action: ActionList = [
+      Polling.addUser as unknown as InstrumentedAction,
+      { actingUser, poll, userToAdd },
+      { error },
+    ];
+    return actions(action);
+  })(),
+});
+
+export const Polling_AddUserResponseSuccess: Sync = ({ request }) => ({
+  when: actions(
+    [Requesting.request, { path: "/Polling/addUser" }, { request }],
+    [Polling.addUser as unknown as InstrumentedAction, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const Polling_AddUserResponseError: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/Polling/addUser" }, { request }],
+    [Polling.addUser as unknown as InstrumentedAction, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
+});
+
 export default [
   ItineraryCreate_MissingTrip,
   Polling_GetPoll,
@@ -177,4 +476,7 @@ export default [
   Polling_AddOptionRequest,
   Polling_AddOptionResponseSuccess,
   Polling_AddOptionResponseError,
+  Polling_AddUserRequest,
+  Polling_AddUserResponseSuccess,
+  Polling_AddUserResponseError,
 ];

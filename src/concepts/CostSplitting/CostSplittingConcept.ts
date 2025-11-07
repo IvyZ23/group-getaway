@@ -66,14 +66,51 @@ export default class CostSplittingConcept {
   async create(
     { item, cost }: { item: Item; cost: number },
   ): Promise<{ expenseId: ID } | { error: string }> {
-    if (cost <= 0) {
-      return { error: "Expense cost must be positive." };
+    // Log the raw incoming payload to help diagnose cases where the frontend
+    // may be sending unexpected values (e.g. empty string, formatted string,
+    // or zero). This helps capture what the server actually received.
+    try {
+      // eslint-disable-next-line no-console
+      console.log("CostSplitting.create called with raw payload", {
+        item,
+        cost,
+        costType: typeof cost,
+      });
+    } catch (_e) {
+      // ignore logging failures
     }
+    // Coerce cost in case frontend sent a string (e.g. "1,234" or "123,")
+    let parsedCost: number;
+    if (typeof cost === "string") {
+      const raw = (cost as unknown as string).trim();
+      if (raw === "") {
+        return { error: "Expense cost must be a positive number." };
+      }
+      const cleaned = raw.replace(/,/g, "");
+      parsedCost = Number(cleaned);
+    } else {
+      parsedCost = cost as number;
+    }
+
+    if (!Number.isFinite(parsedCost) || parsedCost <= 0) {
+      return { error: "Expense cost must be a positive number." };
+    }
+    cost = parsedCost;
 
     // Check if an expense for this item already exists to enforce uniqueness (as per 'requires')
     const existingExpense = await this.expenses.findOne({ item });
     if (existingExpense) {
-      return { error: `Item '${item}' already exists as an expense.` };
+      // Return the existing expense id instead of an error to make create idempotent.
+      try {
+        // eslint-disable-next-line no-console
+        console.debug(
+          "CostSplitting.create: item already exists, returning existing expenseId",
+          { item, expenseId: existingExpense._id },
+        );
+      } catch (_e) {
+        // ignore logging failures
+      }
+      return { expenseId: existingExpense._id };
     }
 
     const newExpense: ExpenseDocument = {
@@ -125,9 +162,22 @@ export default class CostSplittingConcept {
     expenseId: ID;
     newCost: number;
   }): Promise<Empty | { error: string }> {
-    if (newCost <= 0) {
-      return { error: "New cost must be positive." };
+    // Coerce newCost from strings like "1,234" and validate
+    let parsedNewCost: number;
+    if (typeof newCost === "string") {
+      const raw = (newCost as unknown as string).trim();
+      if (raw === "") {
+        return { error: "New cost must be a positive number." };
+      }
+      const cleaned = raw.replace(/,/g, "");
+      parsedNewCost = Number(cleaned);
+    } else {
+      parsedNewCost = newCost as number;
     }
+    if (!Number.isFinite(parsedNewCost) || parsedNewCost <= 0) {
+      return { error: "New cost must be a positive number." };
+    }
+    newCost = parsedNewCost;
 
     const expenseDoc = await this.expenses.findOne({ _id: expenseId });
     if (!expenseDoc) {
@@ -172,8 +222,33 @@ export default class CostSplittingConcept {
     expenseId: ID;
     amount: number;
   }): Promise<Empty | { error: string }> {
-    if (amount <= 0) {
-      return { error: "Contribution amount must be positive." };
+    // Coerce amount in case frontend sent a formatted string
+    let parsedAmount: number;
+    if (typeof amount === "string") {
+      const raw = (amount as unknown as string).trim();
+      if (raw === "") {
+        return { error: "Contribution amount must be a positive number." };
+      }
+      const cleaned = raw.replace(/,/g, "");
+      parsedAmount = Number(cleaned);
+    } else {
+      parsedAmount = amount as number;
+    }
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return { error: "Contribution amount must be a positive number." };
+    }
+    amount = parsedAmount;
+
+    // Debug incoming contribution values
+    try {
+      // eslint-disable-next-line no-console
+      console.log("CostSplitting.addContribution called", {
+        userId,
+        expenseId,
+        amount,
+      });
+    } catch (_e) {
+      // ignore logging failures
     }
 
     const expense = await this.expenses.findOne({ _id: expenseId });
@@ -284,9 +359,26 @@ export default class CostSplittingConcept {
     newAmount: number;
     expenseId: ID;
   }): Promise<Empty | { error: string }> {
-    if (newAmount < 0) {
-      return { error: "New contribution amount cannot be negative." };
+    // Coerce newAmount from string inputs and validate
+    let parsedNewAmount: number;
+    if (typeof newAmount === "string") {
+      const raw = (newAmount as unknown as string).trim();
+      if (raw === "") {
+        return {
+          error: "New contribution amount must be a non-negative number.",
+        };
+      }
+      const cleaned = raw.replace(/,/g, "");
+      parsedNewAmount = Number(cleaned);
+    } else {
+      parsedNewAmount = newAmount as number;
     }
+    if (!Number.isFinite(parsedNewAmount) || parsedNewAmount < 0) {
+      return {
+        error: "New contribution amount must be a non-negative number.",
+      };
+    }
+    newAmount = parsedNewAmount;
 
     const expense = await this.expenses.findOne({ _id: expenseId });
     if (!expense) {
@@ -366,7 +458,7 @@ export default class CostSplittingConcept {
    * _getExpense({ expenseId: ID }): Promise<ExpenseDocument | null>
    * Retrieves an expense document by its unique identifier.
    */
-  async _getExpense(
+  _getExpense(
     { expenseId }: { expenseId: ID },
   ): Promise<ExpenseDocument | null> {
     return this.expenses.findOne({ _id: expenseId });
@@ -376,7 +468,7 @@ export default class CostSplittingConcept {
    * _getExpensesByItem({ item: Item }): Promise<ExpenseDocument[]>
    * Retrieves all expense documents associated with a particular item ID.
    */
-  async _getExpensesByItem(
+  _getExpensesByItem(
     { item }: { item: Item },
   ): Promise<ExpenseDocument[]> {
     return this.expenses.find({ item }).toArray();

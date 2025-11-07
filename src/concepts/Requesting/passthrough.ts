@@ -34,6 +34,25 @@ export const inclusions: Record<string, string> = {
 
   "/api/PasswordAuth/register": "allow users to register",
   "/api/PasswordAuth/authenticate": "allow users to login",
+
+  "/api/Requestings/request": "requests are public",
+  "/api/Requestings/respond": "requests are public",
+  "/api/Requestings/_awaitResponse": "requests are public",
+
+  "/api/Session/create": "sessions for auth",
+  "/api/Session/validate": "sessions for auth",
+  "/api/Session/destroy": "sessions for auth",
+
+  "/api/TripPlanning/create": "anyone can create a trip",
+
+  "/api/Polling/create": "polling can be public",
+  "/api/Polling/addVote": "polling can be public",
+  "/api/Polling/updateVote": "polling can be public",
+  "/api/Polling/close": "polling can be public",
+  "/api/Polling/getResult": "polling can be public",
+  "/api/Polling/_getPoll": "polling can be public",
+  "/api/Polling/_getUserVote": "polling can be public",
+  "/api/Polling/_getVotesForPoll": "polling can be public",
 };
 
 /**
@@ -60,6 +79,7 @@ export const exclusions: Array<string> = [
   "/api/CostSplitting/_getTotalContributions",
   "/api/CostSplitting/_getUserContribution",
   "/api/CostSplitting/updateCost",
+
   "/api/ItineraryPlanner/checkItineraryNotFinalized",
   "/api/ItineraryPlanner/create",
   "/api/ItineraryPlanner/addEvent",
@@ -72,24 +92,14 @@ export const exclusions: Array<string> = [
   "/api/ItineraryPlanner/_getAllEventsForItinerary",
   "/api/ItineraryPlanner/_getApprovedEventsForItinerary",
   "/api/ItineraryPlanner/_getEventById",
+  "/api/ItineraryPlanner/attachPollToEvent",
+
   "/api/PasswordAuth/hashPassword",
   "/api/PasswordAuth/verifyPassword",
   "/api/PasswordAuth/_getUserByUsername",
   "/api/PasswordAuth/_getUserById",
   "/api/PasswordAuth/searchUsers",
-  "/api/Polling/create",
-  "/api/Polling/addOption",
-  "/api/Polling/removeOption",
-  "/api/Polling/addUser",
-  "/api/Polling/removeUser",
-  "/api/Polling/addVote",
-  "/api/Polling/updateVote",
-  "/api/Polling/close",
-  "/api/Polling/getResult",
-  "/api/Polling/_getPoll",
-  "/api/Polling/_getUserVote",
-  "/api/Polling/_getVotesForPoll",
-  "/api/TripPlanning/create",
+
   "/api/TripPlanning/update",
   "/api/TripPlanning/finalize",
   "/api/TripPlanning/delete",
@@ -100,4 +110,9 @@ export const exclusions: Array<string> = [
   "/api/TripPlanning/_getTripById",
   "/api/TripPlanning/_getTripsByUser",
   "/api/TripPlanning/_getParticipantsInTrip",
+
+  "/api/Polling/addOption",
+  "/api/Polling/removeOption",
+  "/api/Polling/addUser",
+  "/api/Polling/removeUser",
 ];
