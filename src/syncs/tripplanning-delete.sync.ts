@@ -5,17 +5,20 @@ import { Requesting, TripPlanning } from "@concepts";
 // Minimal DeleteTrip syncs: trigger TripPlanning.delete and respond for
 // success and error paths to avoid Requesting timeouts.
 
-export const DeleteTripRequest: Sync = ({ request, owner, tripId, user, error }) => ({
+export const DeleteTripRequest: Sync = (
+  { request, owner, tripId, user, error },
+) => ({
   when: actions([
     Requesting.request,
     { path: "/TripPlanning/delete", owner, tripId, user },
     { request },
   ]),
-  where: (frames) => frames.map((f) => {
-    const frame = f as Record<symbol, unknown>;
-    const resolvedOwner = frame[owner] ?? frame[user];
-    return { ...f, [owner]: resolvedOwner } as Record<symbol, unknown>;
-  }),
+  where: (frames) =>
+    frames.map((f) => {
+      const frame = f as Record<symbol, unknown>;
+      const resolvedOwner = frame[owner] ?? frame[user];
+      return { ...f, [owner]: resolvedOwner } as Record<symbol, unknown>;
+    }),
   then: (() => {
     const action: ActionList = [
       TripPlanning.delete as unknown as InstrumentedAction,

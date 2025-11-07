@@ -46,6 +46,8 @@ interface EventDoc {
   cost: number;
   pending: boolean; // true if awaiting approval, false otherwise
   approved: boolean; // true if approved, false if rejected (only relevant if pending is false)
+  // Optional poll id created for this event by the Polling concept
+  poll?: string;
 }
 
 export default class PlanItineraryConcept {
@@ -173,6 +175,11 @@ export default class PlanItineraryConcept {
   }
 
   /**
+   * Attach a poll id to an event document. This is called by a sync that
+   * creates a poll for the event so the relationship is persisted.
+   */
+
+  /**
    * @action approveEvent (event: Event, approved: Flag, itinerary: Itinerary): Empty
    * @requires event to exist in itinerary and itinerary not to be finalized
    * @effects sets the event's approval flag and updates its pending status to false.
@@ -186,6 +193,17 @@ export default class PlanItineraryConcept {
       itinerary: Itinerary;
     },
   ): Promise<Empty | { error: string }> {
+    // Debug logging to help trace approve flows in server logs
+    try {
+      // eslint-disable-next-line no-console
+      console.log("PlanItinerary.approveEvent called", {
+        event: eventId,
+        approved,
+        itinerary: itineraryId,
+      });
+    } catch (_e) {
+      // ignore logging failures
+    }
     // @requires itinerary not to be finalized
     const checkResult = await this.checkItineraryNotFinalized(itineraryId);
     if (checkResult.error) {
@@ -228,6 +246,37 @@ export default class PlanItineraryConcept {
   }
 
   /**
+   * @action attachPollToEvent (event: Event, poll: String): Empty
+   * @requires event to exist
+   * @effects attaches a poll id to the event document (sets event.poll)
+   */
+  async attachPollToEvent(
+    { event: eventId, poll }: { event: Event; poll: string },
+  ): Promise<Empty | { error: string }> {
+    try {
+      // Debug logging to help trace poll attachments
+      try {
+        // eslint-disable-next-line no-console
+        console.log("PlanItinerary.attachPollToEvent", {
+          event: eventId,
+          poll,
+        });
+      } catch (_e) {
+        // ignore logging failures
+      }
+      const result = await this.events.updateOne({ _id: eventId }, {
+        $set: { poll },
+      });
+      if (result.matchedCount === 0) {
+        return { error: `Event ${eventId} not found.` };
+      }
+      return {} as Empty;
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+  }
+
+  /**
    * @action removeEvent (event: Event, itinerary: Itinerary): Empty
    * @requires event to exist in itinerary and itinerary not to be finalized
    * @effects removes the event record from the system and its ID from the itinerary's official list
@@ -238,6 +287,16 @@ export default class PlanItineraryConcept {
       itinerary: Itinerary;
     },
   ): Promise<Empty | { error: string }> {
+    // Debug logging to help trace remove flows in server logs
+    try {
+      // eslint-disable-next-line no-console
+      console.log("PlanItinerary.removeEvent called", {
+        event: eventId,
+        itinerary: itineraryId,
+      });
+    } catch (_e) {
+      // ignore logging failures
+    }
     // @requires itinerary not to be finalized
     const checkResult = await this.checkItineraryNotFinalized(itineraryId);
     if (checkResult.error) {
@@ -306,7 +365,8 @@ export default class PlanItineraryConcept {
       const trips = this.db.collection("TripPlanner.trips");
       const tripDoc = await trips.findOne({ _id: trip });
       if (!tripDoc) return { error: `Trip ${trip} not found.` };
-      const isParticipant = tripDoc.owner === user || (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
+      const isParticipant = tripDoc.owner === user ||
+        (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
       if (!isParticipant) return { error: "Forbidden" };
     }
     return { itinerary };
@@ -329,7 +389,8 @@ export default class PlanItineraryConcept {
       const trips = this.db.collection("TripPlanner.trips");
       const trip = await trips.findOne({ _id: itinerary.trip });
       if (!trip) return { error: `Trip ${itinerary.trip} not found.` };
-      const isParticipant = trip.owner === user || (trip.participants || []).some((p: { user: ID }) => p.user === user);
+      const isParticipant = trip.owner === user ||
+        (trip.participants || []).some((p: { user: ID }) => p.user === user);
       if (!isParticipant) return { error: "Forbidden" };
     }
 
@@ -350,10 +411,12 @@ export default class PlanItineraryConcept {
       const trips = this.db.collection("TripPlanner.trips");
       const tripDoc = await trips.findOne({ _id: it.trip });
       if (!tripDoc) return { error: `Trip ${it.trip} not found.` };
-      const isParticipant = tripDoc.owner === user || (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
+      const isParticipant = tripDoc.owner === user ||
+        (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
       if (!isParticipant) return { error: "Forbidden" };
     }
-    const events = await this.events.find({ itineraryId: itineraryId }).toArray();
+    const events = await this.events.find({ itineraryId: itineraryId })
+      .toArray();
     return { events };
   }
 
@@ -372,7 +435,8 @@ export default class PlanItineraryConcept {
       const trips = this.db.collection("TripPlanner.trips");
       const tripDoc = await trips.findOne({ _id: itinerary.trip });
       if (!tripDoc) return { error: `Trip ${itinerary.trip} not found.` };
-      const isParticipant = tripDoc.owner === user || (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
+      const isParticipant = tripDoc.owner === user ||
+        (tripDoc.participants || []).some((p: { user: ID }) => p.user === user);
       if (!isParticipant) return { error: "Forbidden" };
     }
     if (itinerary.events.length === 0) {

@@ -1,6 +1,5 @@
 import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "@utils/types.ts";
-import { ItineraryPlanner as PlanItinerary } from "@concepts";
 import { freshID } from "@utils/database.ts";
 
 /** Simple aliases for IDs */
@@ -370,21 +369,7 @@ export default class TripPlannerConcept {
    * the background (next tick) so that upstream flows (e.g., TripPlanning.create)
    * do not block waiting for itinerary creation to complete.
    */
-  scheduleItineraryCreate({ trip }: { trip: Trip }): Promise<Empty> {
-    try {
-      setTimeout(() => {
-        try {
-          // Call the PlanItinerary.create action asynchronously. This will be
-          // executed by the engine as an instrumented action but we deliberately
-          // do not await it here.
-          void PlanItinerary.create({ trip });
-        } catch (_e) {
-          // swallow background errors
-        }
-      }, 0);
-    } catch (_e) {
-      // ignore
-    }
-    return Promise.resolve({} as Empty);
-  }
+  // NOTE: itinerary creation is handled by synchronizations (syncs) rather
+  // than by a TripPlanning helper action. See `src/syncs/auto.sync.ts` for
+  // the synchronization that creates itineraries when trips are created.
 }

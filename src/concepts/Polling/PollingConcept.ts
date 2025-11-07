@@ -44,6 +44,9 @@ export default class PollingConcept {
     user: User;
     name: string;
   }): Promise<{ poll: Poll } | { error: string }> {
+    // Debug log to help trace when Polling.create is called and with what
+    // eslint-disable-next-line no-console
+    console.log("Polling.create called", { user, name });
     const existingPoll = await this.polls.findOne({ creator: user, name });
     if (existingPoll) {
       return { error: "A poll with this name already exists for this user." };
@@ -65,7 +68,7 @@ export default class PollingConcept {
   }
 
   async addOption({
-    actingUser,
+    actingUser: _actingUser,
     poll,
     label,
   }: {
@@ -75,7 +78,7 @@ export default class PollingConcept {
   }): Promise<Empty | { error: string }> {
     const existingPoll = await this.polls.findOne({ _id: poll });
     if (!existingPoll) return { error: "Poll not found." };
-    if (existingPoll.creator !== actingUser) {
+    if (existingPoll.creator !== _actingUser) {
       return { error: "Only the poll creator can add options." };
     }
     console.log(existingPoll, "poll");
@@ -136,7 +139,7 @@ export default class PollingConcept {
   }
 
   async addUser({
-    actingUser,
+    actingUser: _actingUser,
     poll,
     userToAdd,
   }: {

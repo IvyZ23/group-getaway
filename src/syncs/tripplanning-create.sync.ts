@@ -15,11 +15,12 @@ export const CreateTripRequest: Sync = (
   ]),
   // If the caller supplied `user` instead of `owner`, resolve owner from user
   // so the TripPlanning.create action receives an `owner` param.
-  where: (frames) => frames.map((f) => {
-    const frame = f as Record<symbol, unknown>;
-    const resolvedOwner = frame[owner] ?? frame[user];
-    return { ...f, [owner]: resolvedOwner } as Record<symbol, unknown>;
-  }),
+  where: (frames) =>
+    frames.map((f) => {
+      const frame = f as Record<symbol, unknown>;
+      const resolvedOwner = frame[owner] ?? frame[user];
+      return { ...f, [owner]: resolvedOwner } as Record<symbol, unknown>;
+    }),
   then: (() => {
     const action: ActionList = [
       TripPlanning.create as unknown as InstrumentedAction,
