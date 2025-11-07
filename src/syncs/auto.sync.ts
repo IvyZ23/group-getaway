@@ -27,18 +27,27 @@ import {
 export const CreateItineraryForTrip: Sync = (
   { owner, destination, dateRange, name, tripId },
 ) => {
+  // Background helper: a tiny action that schedules the real itinerary
+  // creation on the next tick and returns immediately so the engine does
+  // not block the originating request.
+  // NOTE: backgroundCreate was intentionally removed in favor of using the
+  // instrumented TripPlanning.scheduleItineraryCreate action declared on the
+  // TripPlanning concept. That method schedules PlanItinerary.create on the
+  // next tick and returns immediately.
+
   const tripCreated: ActionList = [
     TripPlanning.create as unknown as InstrumentedAction,
     { owner, destination, dateRange, name },
     { tripId },
   ];
-  const createItinerary: ActionList = [
-    PlanItinerary.create as unknown as InstrumentedAction,
+  const backgroundAction: ActionList = [
+    TripPlanning.scheduleItineraryCreate as unknown as InstrumentedAction,
     { trip: tripId },
+    {},
   ];
   return {
     when: actions(tripCreated),
-    then: actions(createItinerary),
+    then: actions(backgroundAction),
   };
 };
 

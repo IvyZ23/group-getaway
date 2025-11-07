@@ -1,5 +1,6 @@
 import { Collection, Db } from "npm:mongodb";
 import { Empty, ID } from "@utils/types.ts";
+import { ItineraryPlanner as PlanItinerary } from "@concepts";
 import { freshID } from "@utils/database.ts";
 
 /** Simple aliases for IDs */
@@ -198,26 +199,51 @@ export default class TripPlannerConcept {
    */
   async updateParticipant({
     owner,
+    user, // the caller (optional); if provided, allows participant self-update
     tripId,
     participantUser,
     budget,
   }: {
-    owner: User;
+    owner?: User;
+    user?: User;
     tripId: Trip;
     participantUser: User;
     budget: number;
   }): Promise<Empty | { error: string }> {
-    const trip = await this.trips.findOne({ _id: tripId, owner });
-    if (!trip) return { error: "Trip not found or not owned by owner." };
+    // If owner provided, enforce owner match (owner can update any participant)
+    if (owner) {
+      const trip = await this.trips.findOne({ _id: tripId, owner });
+      if (!trip) return { error: "Trip not found or not owned by owner." };
+      const exists = trip.participants.some((p) => p.user === participantUser);
+      if (!exists) return { error: "Participant not found in this trip." };
+      await this.trips.updateOne(
+        { _id: tripId, "participants.user": participantUser },
+        { $set: { "participants.$.budget": budget } },
+      );
+      return {};
+    }
 
-    const exists = trip.participants.some((p) => p.user === participantUser);
-    if (!exists) return { error: "Participant not found in this trip." };
+    // Otherwise, allow a participant to update their own budget when they are the caller
+    if (user) {
+      const trip = await this.trips.findOne({ _id: tripId });
+      if (!trip) return { error: "Trip not found." };
+      const exists = trip.participants.some((p) => p.user === participantUser);
+      if (!exists) return { error: "Participant not found in this trip." };
+      // Only allow if caller is the participant being updated
+      if (user !== participantUser) {
+        return { error: "Not authorized to update this participant." };
+      }
+      await this.trips.updateOne(
+        { _id: tripId, "participants.user": participantUser },
+        { $set: { "participants.$.budget": budget } },
+      );
+      return {};
+    }
 
-    await this.trips.updateOne(
-      { _id: tripId, "participants.user": participantUser },
-      { $set: { "participants.$.budget": budget } },
-    );
-    return {};
+    // No owner or user provided — deny
+    return {
+      error: "Not authorized to update participant: owner or user required.",
+    };
   }
 
   /**
@@ -309,7 +335,10 @@ export default class TripPlannerConcept {
 
     // If a user (requester) is provided, only return the trip if the user is owner or participant
     if (user) {
-      const trip = await this.trips.findOne({ _id: tripId, $or: [{ owner: user }, { "participants.user": user }] });
+      const trip = await this.trips.findOne({
+        _id: tripId,
+        $or: [{ owner: user }, { "participants.user": user }],
+      });
       return trip ?? null;
     }
 
@@ -332,5 +361,30 @@ export default class TripPlannerConcept {
   }): Promise<Participant[]> {
     const trip = await this.trips.findOne({ _id: tripId });
     return trip ? trip.participants : [];
+  }
+
+  /**
+   * scheduleItineraryCreate (trip: Trip)
+   *
+   * Lightweight instrumented helper that schedules an Itinerary creation in
+   * the background (next tick) so that upstream flows (e.g., TripPlanning.create)
+   * do not block waiting for itinerary creation to complete.
+   */
+  scheduleItineraryCreate({ trip }: { trip: Trip }): Promise<Empty> {
+    try {
+      setTimeout(() => {
+        try {
+          // Call the PlanItinerary.create action asynchronously. This will be
+          // executed by the engine as an instrumented action but we deliberately
+          // do not await it here.
+          void PlanItinerary.create({ trip });
+        } catch (_e) {
+          // swallow background errors
+        }
+      }, 0);
+    } catch (_e) {
+      // ignore
+    }
+    return Promise.resolve({} as Empty);
   }
 }
