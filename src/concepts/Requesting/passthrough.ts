@@ -93,6 +93,7 @@ export const exclusions: Array<string> = [
   "/api/ItineraryPlanner/_getApprovedEventsForItinerary",
   "/api/ItineraryPlanner/_getEventById",
   "/api/ItineraryPlanner/attachPollToEvent",
+  "/api/SyncHelpers/attachPollToEvent",
 
   "/api/PasswordAuth/hashPassword",
   "/api/PasswordAuth/verifyPassword",

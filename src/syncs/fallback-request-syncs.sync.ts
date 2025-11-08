@@ -5,6 +5,7 @@ import {
   ItineraryPlanner as PlanItinerary,
   Polling,
   Requesting,
+  TripPlanning,
 } from "@concepts";
 
 // Defensive/fallback syncs to avoid Requesting timeouts for common missing
@@ -517,4 +518,46 @@ export default [
   Polling_RemoveUserRequest,
   Polling_RemoveUserResponseSuccess,
   Polling_RemoveUserResponseError,
+  // Fallback mapping for TripPlanning.delete to ensure Requesting requests
+  // to /TripPlanning/delete are always handled and responded to. This mirrors
+  // the dedicated tripplanning-delete sync but provides an extra safety net
+  // in case the dedicated sync isn't loaded for any reason.
+  // It calls TripPlanning.delete and responds on success/error.
+  // NOTE: Duplicate registrations are safe; the engine will execute matching
+  // syncs. This fallback prevents 10s timeouts if a sync file was missed.
+  (function tripDeleteFallback() {
+    const TripDeleteRequest: Sync = ({ request, owner, tripId, error }) => ({
+      when: actions([
+        Requesting.request,
+        { path: "/TripPlanning/delete", owner, tripId },
+        { request },
+      ]),
+      then: (() => {
+        const action: ActionList = [
+          TripPlanning.delete as unknown as InstrumentedAction,
+          { owner, tripId },
+          { error },
+        ];
+        return actions(action);
+      })(),
+    });
+
+    const TripDeleteResponse: Sync = ({ request }) => ({
+      when: actions(
+        [Requesting.request, { path: "/TripPlanning/delete" }, { request }],
+        [TripPlanning.delete as unknown as InstrumentedAction, {}, {}],
+      ),
+      then: actions([Requesting.respond, { request }]),
+    });
+
+    const TripDeleteResponseError: Sync = ({ request, error }) => ({
+      when: actions(
+        [Requesting.request, { path: "/TripPlanning/delete" }, { request }],
+        [TripPlanning.delete as unknown as InstrumentedAction, {}, { error }],
+      ),
+      then: actions([Requesting.respond, { request, error }]),
+    });
+
+    return [TripDeleteRequest, TripDeleteResponse, TripDeleteResponseError];
+  })(),
 ];
