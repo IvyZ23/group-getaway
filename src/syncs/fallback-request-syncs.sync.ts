@@ -466,6 +466,41 @@ export const Polling_AddUserResponseError: Sync = ({ request, error }) => ({
   then: actions([Requesting.respond, { request, error }]),
 });
 
+// Map POST /Polling/removeUser -> Polling.removeUser
+export const Polling_RemoveUserRequest: Sync = (
+  { request, actingUser, poll, userToRemove, error },
+) => ({
+  when: actions([
+    Requesting.request,
+    { path: "/Polling/removeUser", actingUser, poll, userToRemove },
+    { request },
+  ]),
+  then: (() => {
+    const action: ActionList = [
+      Polling.removeUser as unknown as InstrumentedAction,
+      { actingUser, poll, userToRemove },
+      { error },
+    ];
+    return actions(action);
+  })(),
+});
+
+export const Polling_RemoveUserResponseSuccess: Sync = ({ request }) => ({
+  when: actions(
+    [Requesting.request, { path: "/Polling/removeUser" }, { request }],
+    [Polling.removeUser as unknown as InstrumentedAction, {}, {}],
+  ),
+  then: actions([Requesting.respond, { request }]),
+});
+
+export const Polling_RemoveUserResponseError: Sync = ({ request, error }) => ({
+  when: actions(
+    [Requesting.request, { path: "/Polling/removeUser" }, { request }],
+    [Polling.removeUser as unknown as InstrumentedAction, {}, { error }],
+  ),
+  then: actions([Requesting.respond, { request, error }]),
+});
+
 export default [
   ItineraryCreate_MissingTrip,
   Polling_GetPoll,
@@ -479,4 +514,7 @@ export default [
   Polling_AddUserRequest,
   Polling_AddUserResponseSuccess,
   Polling_AddUserResponseError,
+  Polling_RemoveUserRequest,
+  Polling_RemoveUserResponseSuccess,
+  Polling_RemoveUserResponseError,
 ];
