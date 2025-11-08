@@ -56,7 +56,38 @@ export default class TripPlannerConcept {
     dateRange: DateRange;
     name: string;
   }): Promise<{ tripId: Trip } | { error: string }> {
-    // console.log(owner, destination, dateRange, name);
+    // Basic validation: ensure required fields are present
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return { error: "Trip name is required." };
+    }
+    if (
+      !destination || typeof destination !== "string" || !destination.trim()
+    ) {
+      return { error: "Destination is required." };
+    }
+    if (!dateRange || !("start" in dateRange) || !("end" in dateRange)) {
+      return { error: "dateRange with start and end is required." };
+    }
+
+    // Normalize dates (allow strings) and validate ordering
+    const start = dateRange.start instanceof Date
+      ? dateRange.start
+      : new Date(dateRange.start as unknown as string);
+    const end = dateRange.end instanceof Date
+      ? dateRange.end
+      : new Date(dateRange.end as unknown as string);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return { error: "Invalid start or end date." };
+    }
+
+    if (start.getTime() > end.getTime()) {
+      return { error: "Start date must be before or equal to end date." };
+    }
+
+    // Use normalized date objects going forward
+    dateRange = { start, end };
+
     const existingTrip = await this.trips.findOne({
       owner,
       destination,
@@ -109,10 +140,38 @@ export default class TripPlannerConcept {
   }): Promise<Empty | { error: string }> {
     const trip = await this.trips.findOne({ _id: tripId, owner });
     if (!trip) return { error: "Trip not found or not owned by user." };
+    // Validate required fields
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return { error: "Trip name is required." };
+    }
+    if (
+      !destination || typeof destination !== "string" || !destination.trim()
+    ) {
+      return { error: "Destination is required." };
+    }
+    if (!dateRange || !("start" in dateRange) || !("end" in dateRange)) {
+      return { error: "dateRange with start and end is required." };
+    }
 
+    const start = dateRange.start instanceof Date
+      ? dateRange.start
+      : new Date(dateRange.start as unknown as string);
+    const end = dateRange.end instanceof Date
+      ? dateRange.end
+      : new Date(dateRange.end as unknown as string);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return { error: "Invalid start or end date." };
+    }
+
+    if (start.getTime() > end.getTime()) {
+      return { error: "Start date must be before or equal to end date." };
+    }
+
+    // Persist normalized dates
     await this.trips.updateOne(
       { _id: tripId },
-      { $set: { name, destination, dateRange } },
+      { $set: { name, destination, dateRange: { start, end } } },
     );
     return {};
   }
